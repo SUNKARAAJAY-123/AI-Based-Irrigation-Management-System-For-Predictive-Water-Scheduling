@@ -99,8 +99,8 @@ export default function SensorsPage() {
       } else {
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load farms");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load farms");
       setLoading(false);
     }
   };
@@ -120,8 +120,8 @@ export default function SensorsPage() {
         setCrops([]);
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch fields");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch fields");
       setLoading(false);
     }
   };
@@ -149,8 +149,8 @@ export default function SensorsPage() {
         setSimulatorData(prev => ({ ...prev, crop_id: "" }));
       }
 
-    } catch (err: any) {
-      setError(err.message || "Failed to load sensors or crops");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load sensors or crops");
     } finally {
       setLoading(false);
     }
@@ -190,8 +190,8 @@ export default function SensorsPage() {
       setSuccess("Sensor registered successfully!");
       setSensorName("");
       fetchSensorsAndCrops(selectedField.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to register sensor");
+    } catch (err) {
+      setError((err as Error).message || "Failed to register sensor");
     } finally {
       setIsAddingSensor(false);
     }
@@ -233,8 +233,8 @@ export default function SensorsPage() {
       const result = await api.post<Recommendation>(`/sensors/${sensorId}/telemetry`, payload);
       setSimulationResult(result);
       setSuccess("Telemetry logged successfully! AI irrigation recommendation updated.");
-    } catch (err: any) {
-      setError(err.message || "Failed to send telemetry data");
+    } catch (err) {
+      setError((err as Error).message || "Failed to send telemetry data");
     } finally {
       setIsSimulating(false);
     }

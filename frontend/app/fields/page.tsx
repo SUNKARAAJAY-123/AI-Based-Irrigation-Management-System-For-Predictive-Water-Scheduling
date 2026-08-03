@@ -83,8 +83,8 @@ export default function FieldsPage() {
       } else {
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load farms");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load farms");
       setLoading(false);
     }
   };
@@ -102,8 +102,8 @@ export default function FieldsPage() {
         cropsMap[field.id] = crops;
       }
       setFieldCrops(cropsMap);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch fields");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch fields");
     } finally {
       setLoading(false);
     }
@@ -136,8 +136,8 @@ export default function FieldsPage() {
       setSuccess("Field added successfully!");
       setFieldForm({ name: "", area_hectares: "", soil_type: "loam" });
       fetchFields(selectedFarm.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to add field");
+    } catch (err) {
+      setError((err as Error).message || "Failed to add field");
     } finally {
       setIsAddingField(false);
     }
@@ -167,8 +167,8 @@ export default function FieldsPage() {
       });
       setActiveCropFormId(null);
       if (selectedFarm) fetchFields(selectedFarm.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to register crop");
+    } catch (err) {
+      setError((err as Error).message || "Failed to register crop");
     } finally {
       setIsAddingCrop(false);
     }
@@ -181,8 +181,8 @@ export default function FieldsPage() {
       await api.delete(`/fields/${fieldId}`);
       setSuccess("Field deleted successfully");
       if (selectedFarm) fetchFields(selectedFarm.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to delete field");
+    } catch (err) {
+      setError((err as Error).message || "Failed to delete field");
     }
   };
 

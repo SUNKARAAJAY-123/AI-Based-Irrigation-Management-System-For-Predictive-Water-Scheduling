@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {

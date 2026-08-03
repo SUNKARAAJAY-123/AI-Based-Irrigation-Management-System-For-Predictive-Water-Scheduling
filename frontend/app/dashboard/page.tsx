@@ -38,6 +38,10 @@ interface Recommendation {
   best_irrigation_time?: string;
   risk_level: string;
   confidence_score: number;
+  features_snapshot?: {
+    soil_moisture?: number;
+    [key: string]: unknown;
+  };
 }
 
 interface Weather {
@@ -97,9 +101,9 @@ export default function DashboardPage() {
       } else {
         setLoadingData(false);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to load dashboard data");
+      setError((err as Error).message || "Failed to load dashboard data");
       setLoadingData(false);
     }
   };
@@ -125,8 +129,8 @@ export default function DashboardPage() {
         setLatestMoisture(null);
         setLoadingData(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load farm details");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load farm details");
       setLoadingData(false);
     }
   };
@@ -144,7 +148,7 @@ export default function DashboardPage() {
         if (recs.length > 0) {
           setRecommendation(recs[0]);
           // Set moisture snapshot from features if present
-          const snapshot = (recs[0] as any).features_snapshot;
+          const snapshot = recs[0].features_snapshot;
           if (snapshot && typeof snapshot.soil_moisture === "number") {
             setLatestMoisture(snapshot.soil_moisture);
           }
@@ -252,7 +256,7 @@ export default function DashboardPage() {
       {farms.length === 0 && !loadingData && (
         <div className="bg-neutral-900/40 border border-neutral-800 rounded-3xl p-12 text-center max-w-xl mx-auto shadow-2xl backdrop-blur-md space-y-6">
           <div className="text-5xl">🚜</div>
-          <h2 className="text-xl font-bold text-white">Let's Get Started!</h2>
+          <h2 className="text-xl font-bold text-white">Let&apos;s Get Started!</h2>
           <p className="text-neutral-400 text-xs leading-relaxed">
             Welcome to AgriSmart Pro! To utilize the AI model recommendations, soil moisture tracking, and weather forecasts, you need to register a farm and add a field.
           </p>

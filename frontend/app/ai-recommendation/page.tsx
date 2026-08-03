@@ -224,7 +224,7 @@ export default function AIRecommendationPage() {
         setAiTextResponse(voiceRes.text_translated);
         speak(voiceRes.text_translated, language, voiceRes.audio_base64);
       }
-    } catch (err: any) {
+    } catch (err) {
       setError("Failed to fetch audio from Sarvam AI backend. Check backend logs.");
       console.error(err);
     } finally {
@@ -372,9 +372,9 @@ export default function AIRecommendationPage() {
             <h3 className="text-lg font-bold text-white">Ask AgriSmart Pro</h3>
             <p className="text-neutral-400 text-xs max-w-sm leading-relaxed">
               Click the microphone button and ask: <br />
-              <span className="text-indigo-400 font-semibold italic">"Is irrigation required?"</span> or <br />
-              <span className="text-indigo-400 font-semibold italic">"क्या सिंचाई की आवश्यकता है?"</span> or <br />
-              <span className="text-indigo-400 font-semibold italic">"ನೀರಾವರಿ ಅಗತ್ಯವಿದೆಯೇ?"</span>
+              <span className="text-indigo-400 font-semibold italic">&quot;Is irrigation required?&quot;</span> or <br />
+              <span className="text-indigo-400 font-semibold italic">&quot;क्या सिंचाई की आवश्यकता है?&quot;</span> or <br />
+              <span className="text-indigo-400 font-semibold italic">&quot;ನೀರಾವರಿ ಅಗತ್ಯವಿದೆಯೇ?&quot;</span>
             </p>
           </div>
 

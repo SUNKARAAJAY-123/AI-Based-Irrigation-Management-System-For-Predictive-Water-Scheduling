@@ -52,8 +52,8 @@ export default function FarmsPage() {
     try {
       const data = await api.get<Farm[]>("/farms");
       setFarms(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch farms");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch farms");
     } finally {
       setLoading(false);
     }
@@ -113,8 +113,8 @@ export default function FarmsPage() {
         soil_type: "loam",
       });
       fetchFarms();
-    } catch (err: any) {
-      setError(err.message || "Failed to add farm");
+    } catch (err) {
+      setError((err as Error).message || "Failed to add farm");
     } finally {
       setIsSubmitting(false);
     }
@@ -128,8 +128,8 @@ export default function FarmsPage() {
       await api.delete(`/farms/${id}`);
       setSuccess("Farm deleted successfully");
       fetchFarms();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete farm");
+    } catch (err) {
+      setError((err as Error).message || "Failed to delete farm");
     }
   };
 

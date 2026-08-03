@@ -69,8 +69,8 @@ export default function ProfilePage() {
       await api.put("/users/profile", formData);
       setSuccess("Profile settings updated successfully!");
       await refreshProfile();
-    } catch (err: any) {
-      setError(err.message || "Failed to update profile settings");
+    } catch (err) {
+      setError((err as Error).message || "Failed to update profile settings");
     } finally {
       setIsSubmitting(false);
     }

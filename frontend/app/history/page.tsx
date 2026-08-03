@@ -77,8 +77,8 @@ export default function HistoryPage() {
       } else {
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load farms");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load farms");
       setLoading(false);
     }
   };
@@ -96,8 +96,8 @@ export default function HistoryPage() {
         setRecommendations([]);
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch fields");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch fields");
       setLoading(false);
     }
   };
@@ -114,8 +114,8 @@ export default function HistoryPage() {
         setRecommendations([]);
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch crops");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch crops");
       setLoading(false);
     }
   };
@@ -125,8 +125,8 @@ export default function HistoryPage() {
     try {
       const data = await api.get<Recommendation[]>(`/recommendations?crop_id=${cropId}`);
       setRecommendations(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load history ledger");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load history ledger");
     } finally {
       setLoading(false);
     }
@@ -165,8 +165,8 @@ export default function HistoryPage() {
       setAppliedVolume("");
       setActiveRecId(null);
       if (selectedCrop) fetchRecommendations(selectedCrop.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to log irrigation");
+    } catch (err) {
+      setError((err as Error).message || "Failed to log irrigation");
     } finally {
       setIsUpdating(false);
     }

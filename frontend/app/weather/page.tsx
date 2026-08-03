@@ -98,8 +98,8 @@ export default function WeatherPage() {
         setLookupMode("gps");
         setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load farms");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load farms");
       setLookupMode("gps");
       setLoading(false);
     }
@@ -119,8 +119,8 @@ export default function WeatherPage() {
       }
       const data = await api.get<Weather>(url);
       setWeatherData(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch weather forecast");
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch weather forecast");
     } finally {
       setLoading(false);
     }

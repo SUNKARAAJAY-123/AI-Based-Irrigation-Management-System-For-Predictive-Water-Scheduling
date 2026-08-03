@@ -54,8 +54,8 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       await register(formData);
-    } catch (err: any) {
-      setError(err.message || "Registration failed. Check your connection or email.");
+    } catch (err) {
+      setError((err as Error).message || "Registration failed. Check your connection or email.");
       setIsSubmitting(false);
     }
   };

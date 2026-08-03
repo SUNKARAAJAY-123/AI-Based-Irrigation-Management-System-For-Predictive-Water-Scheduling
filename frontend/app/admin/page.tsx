@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useRouter, useParams, usePathname } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { api } from "@/services/api";
-import Link from "next/link";
+
 
 interface Stats {
   total_users: number;
@@ -89,7 +89,7 @@ export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
-  const pathname = usePathname();
+  
 
   // Navigation tab state
   const [activeTab, setActiveTab] = useState<TabType>("overview");
@@ -174,9 +174,9 @@ export default function AdminPage() {
       // Reports
       const fetchedReports = await api.get<ReportSummary[]>("/admin/reports/summary");
       setReports(fetchedReports);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "Failed to load administrative logs. Check backend API connection.");
+      setError((err as Error).message || "Failed to load administrative logs. Check backend API connection.");
     } finally {
       setLoading(false);
     }
@@ -203,8 +203,8 @@ export default function AdminPage() {
       setSuccess(`User ${updated.full_name} status updated successfully.`);
       const fetchedUsers = await api.get<UserRecord[]>("/admin/users");
       setUsers(fetchedUsers);
-    } catch (err: any) {
-      setError(err.message || "Failed to modify user status");
+    } catch (err) {
+      setError((err as Error).message || "Failed to modify user status");
     }
   };
 
@@ -218,8 +218,8 @@ export default function AdminPage() {
       setSuccess(`User ${updated.full_name} role changed to ${newRole}.`);
       const fetchedUsers = await api.get<UserRecord[]>("/admin/users");
       setUsers(fetchedUsers);
-    } catch (err: any) {
-      setError(err.message || "Failed to alter user role");
+    } catch (err) {
+      setError((err as Error).message || "Failed to alter user role");
     }
   };
 
@@ -244,8 +244,8 @@ export default function AdminPage() {
       setSuccess(`Announcement broadcasted to all ${result.broadcast_count} farms successfully.`);
       setBroadcastTitle("");
       setBroadcastMessage("");
-    } catch (err: any) {
-      setError(err.message || "Failed to broadcast announcement.");
+    } catch (err) {
+      setError((err as Error).message || "Failed to broadcast announcement.");
     } finally {
       setIsBroadcasting(false);
     }

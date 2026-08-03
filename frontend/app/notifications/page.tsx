@@ -38,8 +38,8 @@ export default function NotificationsPage() {
     try {
       const data = await api.get<Notification[]>("/notifications");
       setNotifications(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load notifications");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load notifications");
     } finally {
       setLoading(false);
     }
@@ -50,8 +50,8 @@ export default function NotificationsPage() {
     try {
       await api.put("/notifications/read", {});
       fetchNotifications();
-    } catch (err: any) {
-      setError(err.message || "Failed to clear notifications");
+    } catch (err) {
+      setError((err as Error).message || "Failed to clear notifications");
     }
   };
 
