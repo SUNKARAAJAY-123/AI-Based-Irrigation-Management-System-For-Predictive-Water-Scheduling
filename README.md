@@ -2,6 +2,11 @@
 
 An advanced, production-ready system that leverages machine learning, weather forecasts, and soil moisture telemetry to deliver highly accurate irrigation recommendations. Featuring a modern Next.js PWA frontend with voice synthesis and recognition in regional languages powered by Sarvam AI, this application empowers farmers to optimize crop yields, reduce water consumption, and practice sustainable agriculture.
 
+## 🎥 Project Demonstration & Video Walkthrough
+
+Watch the complete demonstration of the system, including the predictive scheduling engine, voice assistant, and RBAC admin panel:
+👉 **[Milestone Demonstration Video (Google Drive)](https://drive.google.com/file/d/15g0Ub9grk7EFSYEcK1u0fXZQQXP3Xz9v/view?usp=drive_link)**
+
 ---
 
 ## 🏗️ Architecture & Project Directory Structure
