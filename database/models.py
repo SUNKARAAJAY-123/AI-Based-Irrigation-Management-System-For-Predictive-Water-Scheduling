@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Integer, Enum, JSON
+from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Integer, Enum, JSON, CheckConstraint
 from sqlalchemy.orm import relationship
 from database.database import Base
 
@@ -20,10 +20,16 @@ class User(Base):
     state = Column(String(100), nullable=True)
     district = Column(String(100), nullable=True)
     preferred_language = Column(String(50), default="en-IN") # en-IN, hi-IN, kn-IN, etc.
-    role = Column(String(50), default="farmer") # farmer, admin
+    role = Column(String(50), default="FARMER", nullable=False, index=True)
+    status = Column(String(50), default="ACTIVE", nullable=False, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        CheckConstraint("role IN ('SUPER_ADMIN', 'ADMIN', 'ADMIN_PENDING', 'FARMER')", name="check_user_role"),
+        CheckConstraint("status IN ('ACTIVE', 'PENDING', 'REJECTED', 'SUSPENDED')", name="check_user_status"),
+    )
 
     # Relationships
     farms = relationship("Farm", back_populates="owner", cascade="all, delete-orphan")

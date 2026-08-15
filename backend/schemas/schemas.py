@@ -13,6 +13,7 @@ class TokenData(BaseModel):
     user_id: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    status: Optional[str] = None
 
 # ------------------------------------------------------------------------------
 # User Schemas
@@ -26,6 +27,7 @@ class UserRegister(BaseModel):
     state: Optional[str] = None
     district: Optional[str] = None
     preferred_language: str = "en-IN"
+    role: str = "FARMER" # FARMER, ADMIN, etc.
 
     @field_validator("confirm_password")
     @classmethod
@@ -54,6 +56,7 @@ class UserResponse(BaseModel):
     district: Optional[str]
     preferred_language: str
     role: str
+    status: str
     is_active: bool
     created_at: datetime
 
@@ -304,4 +307,94 @@ class AdminReportItem(BaseModel):
     applied_volume: float
     avg_confidence: float
     recommendations_count: int
+
+
+# ------------------------------------------------------------------------------
+# ML Predict Schemas (Phase 8)
+# ------------------------------------------------------------------------------
+class MLPredictRequest(BaseModel):
+    temperature: Optional[float] = Field(None, ge=-50, le=80)
+    temperature_c: Optional[float] = Field(None, ge=-50, le=80)
+    humidity: float = Field(..., ge=0, le=100)
+    rainfall: Optional[float] = Field(None, ge=0, le=5000)
+    rainfall_mm: Optional[float] = Field(None, ge=0, le=5000)
+    soil_moisture: float = Field(..., ge=0, le=100)
+    crop: Optional[str] = Field(None)
+    crop_type: Optional[str] = Field(None)
+    soil_type: str = Field(..., min_length=1)
+    model: Optional[str] = None
+    
+    # New fields for scheduling & timing
+    crop_growth_stage: Optional[str] = None
+    soil_ph: Optional[float] = None
+    organic_carbon: Optional[float] = None
+    electrical_conductivity: Optional[float] = None
+    N: Optional[float] = None
+    P: Optional[float] = None
+    K: Optional[float] = None
+    sunlight_hours: Optional[float] = None
+    wind_speed_kmh: Optional[float] = None
+    season: Optional[str] = None
+    irrigation_type: Optional[str] = None
+    water_source: Optional[str] = None
+    field_area_hectare: Optional[float] = None
+    field_area_acres: Optional[float] = None
+    mulching_used: Optional[str] = None
+    previous_irrigation_mm: Optional[float] = None
+    region: Optional[str] = None
+    ET_index: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    field_id: Optional[str] = None
+
+class MLPredictResponse(BaseModel):
+    water_required: float
+    recommendation: str
+    confidence: float
+    model_type: Optional[str] = None
+    prediction_time_ms: Optional[float] = None
+    display_name: Optional[str] = None
+    
+    # Extended JSON structure fields
+    model: Optional[str] = None
+    prediction: Optional[Dict[str, Any]] = None
+    field: Optional[Dict[str, Any]] = None
+    irrigation_schedule: Optional[Dict[str, Any]] = None
+
+class MLTrainRequest(BaseModel):
+    models: List[str] = Field(default=["random_forest", "gradient_boosting", "xgboost", "lstm"])
+    weights: Optional[Dict[str, float]] = None
+
+class MLTrainResponse(BaseModel):
+    status: str
+    message: str
+    best_model: Optional[str] = None
+
+class MLTrainingStatusResponse(BaseModel):
+    status: str
+    current_model: str
+    progress: int
+    logs: List[str]
+    error: Optional[str] = None
+    results: Optional[List[Any]] = None
+
+class MLSetProductionModelRequest(BaseModel):
+    model: str = Field(..., min_length=1)
+
+class MLSetProductionModelResponse(BaseModel):
+    status: str
+    production_model: str
+    message: str
+
+
+
+# ------------------------------------------------------------------------------
+# RBAC Approval Schemas
+# ------------------------------------------------------------------------------
+class AdminRequestApproval(BaseModel):
+    notes: Optional[str] = None
+
+class AdminRequestRejection(BaseModel):
+    rejection_reason: Optional[str] = None
+
 

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.api.routes import router
-from ml.prediction import predict
+from ml import predict
 from backend.utils.config import settings
 import logging
 

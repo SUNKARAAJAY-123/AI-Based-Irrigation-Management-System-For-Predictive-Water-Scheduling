@@ -33,6 +33,7 @@ export const metadata: Metadata = {
 };
 
 import Navbar from "@/components/Navbar";
+import VoiceAssistant from "@/components/VoiceAssistant";
 import { AuthProvider } from "@/hooks/useAuth";
 
 export default function RootLayout({
@@ -51,6 +52,7 @@ export default function RootLayout({
             <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
               {children}
             </main>
+            <VoiceAssistant />
           </div>
         </AuthProvider>
         <script

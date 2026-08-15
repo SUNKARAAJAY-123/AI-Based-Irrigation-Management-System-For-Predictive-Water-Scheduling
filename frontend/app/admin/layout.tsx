@@ -17,8 +17,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (mounted && !loading) {
       if (!user) {
         router.push("/login");
-      } else if (user.role !== "admin") {
-        router.push("/dashboard");
+      } else {
+        const roleLower = user.role.toLowerCase();
+        if (roleLower !== "admin" && roleLower !== "super_admin") {
+          router.push("/dashboard");
+        }
       }
     }
   }, [user, loading, mounted, router]);
@@ -34,7 +37,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  if (!user || user.role !== "admin") {
+  if (!user || (user.role.toLowerCase() !== "admin" && user.role.toLowerCase() !== "super_admin")) {
     return null; // Prevents content flashing during redirect
   }
 

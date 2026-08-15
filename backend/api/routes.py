@@ -1,22 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Any
 import uuid
 
 from database.database import get_db
 from database import models
 from backend.schemas import schemas
 from backend.auth import jwt
-from backend.services import weather, sarvam_ai
-from ml.prediction import predict
+from backend.services import weather, sarvam_ai, scheduling
+from ml import predict
+from ml.predict import predict_water_requirement
 
 router = APIRouter()
 security = HTTPBearer()
 
 # ------------------------------------------------------------------------------
-# Authentication Dependency
+# Authentication & Role Dependency
 # ------------------------------------------------------------------------------
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> models.User:
     token = credentials.credentials
@@ -32,48 +33,148 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is inactive or unavailable")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        
+    # Validate active status and check status
+    if user.status != "ACTIVE" or not user.is_active:
+        if user.status == "PENDING":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your Admin account is awaiting approval from the Super Admin."
+            )
+        elif user.status == "REJECTED":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your Admin registration request has been rejected."
+            )
+        elif user.status == "SUSPENDED":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been suspended."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive or unavailable"
+            )
+            
     return user
+
+def require_role(allowed_roles: List[str]):
+    def dependency(current_user: models.User = Depends(get_current_user)):
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access Denied. Required role in: {allowed_roles}"
+            )
+        return current_user
+    return dependency
+
+require_super_admin = require_role(["SUPER_ADMIN"])
+require_admin_or_super_admin = require_role(["ADMIN", "SUPER_ADMIN"])
+require_farmer = require_role(["FARMER"])
 
 # ------------------------------------------------------------------------------
 # Auth Endpoints
 # ------------------------------------------------------------------------------
-@router.post("/users/register", response_model=schemas.Token)
+@router.post("/users/register")
 def register(user_data: schemas.UserRegister, db: Session = Depends(get_db)):
     # Check if user already exists
     existing = db.query(models.User).filter(models.User.email == user_data.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
         
+    requested_role = user_data.role.upper()
+    if requested_role not in ["FARMER", "ADMIN"]:
+        raise HTTPException(status_code=400, detail="Invalid registration role")
+        
+    # Prevent registration of SUPER_ADMIN
+    if requested_role == "SUPER_ADMIN":
+        raise HTTPException(status_code=400, detail="Cannot register as SUPER_ADMIN")
+        
     hashed_pwd = jwt.hash_password(user_data.password)
-    new_user = models.User(
-        email=user_data.email,
-        hashed_password=hashed_pwd,
-        full_name=user_data.full_name,
-        phone_number=user_data.phone_number,
-        state=user_data.state,
-        district=user_data.district,
-        preferred_language=user_data.preferred_language,
-        role="farmer"
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
     
-    # Generate token
-    access_token = jwt.create_access_token(data={"sub": new_user.id, "role": new_user.role})
-    return {"access_token": access_token, "token_type": "bearer"}
+    if requested_role == "ADMIN":
+        new_user = models.User(
+            email=user_data.email,
+            hashed_password=hashed_pwd,
+            full_name=user_data.full_name,
+            phone_number=user_data.phone_number,
+            state=user_data.state,
+            district=user_data.district,
+            preferred_language=user_data.preferred_language,
+            role="ADMIN_PENDING",
+            status="PENDING",
+            is_active=False
+        )
+        db.add(new_user)
+        db.commit()
+        return {
+            "success": True,
+            "status": "PENDING",
+            "message": "Your Admin registration request has been submitted successfully. Your account will become active only after approval from the Super Admin."
+        }
+    else: # FARMER
+        new_user = models.User(
+            email=user_data.email,
+            hashed_password=hashed_pwd,
+            full_name=user_data.full_name,
+            phone_number=user_data.phone_number,
+            state=user_data.state,
+            district=user_data.district,
+            preferred_language=user_data.preferred_language,
+            role="FARMER",
+            status="ACTIVE",
+            is_active=True
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        # Generate token
+        access_token = jwt.create_access_token(data={
+            "sub": new_user.id,
+            "email": new_user.email,
+            "role": new_user.role,
+            "status": new_user.status
+        })
+        return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/users/login", response_model=schemas.Token)
 def login(login_data: schemas.UserLogin, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == login_data.email).first()
     if not user or not jwt.verify_password(login_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="User account is inactive")
         
-    access_token = jwt.create_access_token(data={"sub": user.id, "role": user.role})
+    if user.status != "ACTIVE" or not user.is_active:
+        if user.status == "PENDING":
+            raise HTTPException(
+                status_code=403,
+                detail="Your Admin account is awaiting approval from the Super Admin."
+            )
+        elif user.status == "REJECTED":
+            raise HTTPException(
+                status_code=403,
+                detail="Your Admin registration request has been rejected."
+            )
+        elif user.status == "SUSPENDED":
+            raise HTTPException(
+                status_code=403,
+                detail="Your account has been suspended."
+            )
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive or unavailable"
+            )
+        
+    access_token = jwt.create_access_token(data={
+        "sub": user.id,
+        "email": user.email,
+        "role": user.role,
+        "status": user.status
+    })
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/users/profile", response_model=schemas.UserResponse)
@@ -501,10 +602,11 @@ def mark_all_notifications_read(current_user: models.User = Depends(get_current_
 # Admin Dependencies & Endpoints
 # ------------------------------------------------------------------------------
 def get_current_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
-    if current_user.role != "admin":
+    print(f"DEBUG: get_current_admin checking user={current_user.email}, role={current_user.role}")
+    if current_user.role not in ["ADMIN", "SUPER_ADMIN", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access Denied. Administrator privileges required."
+            detail=f"Access Denied. Administrator privileges required. Your role: {current_user.role}"
         )
     return current_user
 
@@ -546,7 +648,7 @@ def get_admin_stats(current_admin: models.User = Depends(get_current_admin), db:
 def get_admin_users(
     search: Optional[str] = Query(None),
     role: Optional[str] = Query(None),
-    current_admin: models.User = Depends(get_current_admin),
+    current_admin: models.User = Depends(require_super_admin), # Restrict to SUPER_ADMIN
     db: Session = Depends(get_db)
 ):
     query = db.query(models.User)
@@ -563,17 +665,105 @@ def get_admin_users(
 def update_user_status(
     user_id: str,
     update_data: schemas.AdminUserUpdate,
-    current_admin: models.User = Depends(get_current_admin),
+    current_admin: models.User = Depends(require_super_admin), # Restrict to SUPER_ADMIN
     db: Session = Depends(get_db)
 ):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # 1. Never allow self modifications
     if user.id == current_admin.id:
         raise HTTPException(status_code=400, detail="Cannot alter your own administrative status")
         
+    # 2. Never allow modifying SUPER_ADMIN role/status
+    if user.role == "SUPER_ADMIN":
+        raise HTTPException(status_code=400, detail="Super Admin role/status cannot be modified.")
+        
+    # 3. Never allow promoting someone to SUPER_ADMIN
+    if update_data.role == "SUPER_ADMIN":
+        raise HTTPException(status_code=400, detail="Cannot promote a user to SUPER_ADMIN.")
+        
     for key, value in update_data.model_dump(exclude_unset=True).items():
         setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.delete("/admin/users/{user_id}")
+def delete_user(
+    user_id: str,
+    current_admin: models.User = Depends(require_super_admin), # Restrict to SUPER_ADMIN
+    db: Session = Depends(get_db)
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Prevent deleting SUPER_ADMIN
+    if user.role == "SUPER_ADMIN" or user.email == "sunkaraajay66@gmail.com":
+        raise HTTPException(status_code=400, detail="Super Admin account cannot be deleted.")
+        
+    if user.id == current_admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account.")
+        
+    db.delete(user)
+    db.commit()
+    return {"detail": "User deleted successfully"}
+
+# ------------------------------------------------------------------------------
+# Super Admin Approval requests Endpoints
+# ------------------------------------------------------------------------------
+@router.get("/admin/requests", response_model=List[schemas.UserResponse])
+def get_pending_admin_requests(
+    current_admin: models.User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    return db.query(models.User).filter(
+        models.User.role == "ADMIN_PENDING",
+        models.User.status == "PENDING"
+    ).order_by(models.User.created_at.desc()).all()
+
+@router.post("/admin/requests/{user_id}/approve", response_model=schemas.UserResponse)
+def approve_admin_request(
+    user_id: str,
+    approval_data: schemas.AdminRequestApproval,
+    current_admin: models.User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == "ADMIN_PENDING"
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Pending admin request not found")
+        
+    user.role = "ADMIN"
+    user.status = "ACTIVE"
+    user.is_active = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+@router.post("/admin/requests/{user_id}/reject", response_model=schemas.UserResponse)
+def reject_admin_request(
+    user_id: str,
+    rejection_data: schemas.AdminRequestRejection,
+    current_admin: models.User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    user = db.query(models.User).filter(
+        models.User.id == user_id,
+        models.User.role == "ADMIN_PENDING"
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Pending admin request not found")
+        
+    user.status = "REJECTED"
+    # role remains ADMIN_PENDING
+    user.is_active = False
+    # we can store rejection reason in logs or profile if desired, but user model doesn't have it.
+    # We can write it to log if needed.
     db.commit()
     db.refresh(user)
     return user
@@ -656,4 +846,425 @@ def get_admin_reports(current_admin: models.User = Depends(get_current_admin), d
         }
         for r in results
     ]
+
+
+# ------------------------------------------------------------------------------
+# ML Predict & Comparison Endpoints
+# ------------------------------------------------------------------------------
+@router.post("/api/ml/predict", response_model=schemas.MLPredictResponse)
+async def get_ml_prediction(payload: schemas.MLPredictRequest, db: Session = Depends(get_db)):
+    """
+    Predicts the irrigation water requirement based on weather, soil, and crop characteristics.
+    Allows passing a specific model to test different architectures.
+    Provides scheduling recommendation (when to irrigate).
+    """
+    try:
+        # Support both 'crop' and 'crop_type'
+        crop_name = payload.crop or payload.crop_type
+        if not crop_name:
+            raise HTTPException(status_code=400, detail="Either 'crop' or 'crop_type' must be provided.")
+            
+        # Support alternative fields temperature/temperature_c and rainfall/rainfall_mm
+        temperature_val = payload.temperature if payload.temperature is not None else payload.temperature_c
+        rainfall_val = payload.rainfall if payload.rainfall is not None else payload.rainfall_mm
+        
+        if temperature_val is None:
+            temperature_val = 30.0  # safe default
+        if rainfall_val is None:
+            rainfall_val = 0.0  # safe default
+
+        # Land area conversion (Authoritative conversion between acres and hectares)
+        acres_val = payload.field_area_acres
+        hectares_val = payload.field_area_hectare
+        
+        if acres_val is not None:
+            if hectares_val is None:
+                hectares_val = acres_val * 0.40468564224
+        elif hectares_val is not None:
+            acres_val = hectares_val / 0.40468564224
+        else:
+            # Defaults if not provided
+            acres_val = 1.0
+            hectares_val = 0.40468564224
+
+        # Map other optional fields passed in payload to kwargs for ML model
+        extra_kwargs = {}
+        # List of fields that map directly to feature columns
+        ml_fields = [
+            "crop_growth_stage", "soil_ph", "organic_carbon", "electrical_conductivity",
+            "N", "P", "K", "sunlight_hours", "wind_speed_kmh", "season", "irrigation_type",
+            "water_source", "mulching_used", "previous_irrigation_mm", "region", "ET_index"
+        ]
+        
+        for field_name in ml_fields:
+            val = getattr(payload, field_name, None)
+            if val is not None:
+                extra_kwargs[field_name] = val
+                
+        # Set field_area_hectare as it is part of ML feature columns
+        extra_kwargs["field_area_hectare"] = hectares_val
+
+        # Run ML model water requirements prediction (How much water in mm)
+        prediction = predict_water_requirement(
+            temperature=temperature_val,
+            humidity=payload.humidity,
+            rainfall=rainfall_val,
+            soil_moisture=payload.soil_moisture,
+            crop=crop_name,
+            soil_type=payload.soil_type,
+            model=payload.model,
+            **extra_kwargs
+        )
+        
+        # authoritative total water required liters calculation
+        # total_water_litres = water_required_mm * 4046.8564224 * field_area_acres
+        water_required_mm = prediction["water_required"]
+        total_water_litres = int(round(water_required_mm * 4046.8564224 * acres_val))
+
+        # Run Irrigation Scheduling Service (When to irrigate)
+        sched = await scheduling.generate_irrigation_schedule(
+            water_required_mm=water_required_mm,
+            soil_moisture=payload.soil_moisture,
+            crop_type=crop_name,
+            crop_growth_stage=payload.crop_growth_stage,
+            ET_index=payload.ET_index,
+            previous_irrigation_mm=payload.previous_irrigation_mm,
+            temperature_c=temperature_val,
+            humidity=payload.humidity,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            field_id=payload.field_id,
+            soil_type=payload.soil_type,
+            db=db
+        )
+
+        return {
+            # Backward-compatible fields
+            "water_required": water_required_mm,
+            "recommendation": prediction["recommendation"],
+            "confidence": prediction["confidence"],
+            "model_type": prediction["model_type"],
+            "prediction_time_ms": prediction["prediction_time_ms"],
+            "display_name": prediction["display_name"],
+            
+            # Extended response fields
+            "model": prediction["model_type"],
+            "prediction": {
+                "water_required_mm": water_required_mm
+            },
+            "field": {
+                "area_acres": round(acres_val, 2),
+                "total_water_litres": total_water_litres
+            },
+            "irrigation_schedule": sched
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/ml/train", response_model=schemas.MLTrainResponse)
+def run_ml_training(
+    payload: schemas.MLTrainRequest,
+    background_tasks: BackgroundTasks,
+    current_admin: models.User = Depends(get_current_admin)
+):
+    """
+    Starts the background machine learning training and comparison process.
+    Restricted to Admins and Super Admins.
+    """
+    try:
+        from ml.train import train_and_compare
+        
+        # Read parameters
+        weights = payload.weights
+        dataset_path = "datasets/irrigation_master_dataset_v1.csv"
+        
+        # Trigger training in background
+        background_tasks.add_task(train_and_compare, dataset_path, weights)
+        
+        return {
+            "status": "training",
+            "message": "Multi-model training and benchmarking pipeline started in the background.",
+            "best_model": None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start training: {str(e)}")
+
+@router.get("/api/ml/training-status", response_model=schemas.MLTrainingStatusResponse)
+def get_ml_training_status(
+    current_admin: models.User = Depends(get_current_admin)
+):
+    """
+    Retrieves the current training state, logs, progress, and evaluation results.
+    Restricted to Admins and Super Admins.
+    """
+    status_file = os.path.join(os.path.dirname(__file__), "../../ml/models/training_status.json")
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r") as f:
+                data = json.load(f)
+                return {
+                    "status": data.get("status", "idle"),
+                    "current_model": data.get("current_model", ""),
+                    "progress": data.get("progress", 0),
+                    "logs": data.get("logs", []),
+                    "error": data.get("error"),
+                    "results": data.get("results", [])
+                }
+        except Exception as e:
+            return {
+                "status": "failed",
+                "current_model": "",
+                "progress": 0,
+                "logs": [f"Error reading status file: {e}"],
+                "error": str(e),
+                "results": []
+            }
+            
+    # Default return when training has never run
+    return {
+        "status": "idle",
+        "current_model": "",
+        "progress": 0,
+        "logs": ["No active training run has been initiated."],
+        "error": None,
+        "results": []
+    }
+
+@router.post("/api/ml/set-production-model", response_model=schemas.MLSetProductionModelResponse)
+def set_production_model(
+    payload: schemas.MLSetProductionModelRequest,
+    current_admin: models.User = Depends(get_current_admin)
+):
+    """
+    Sets the default production model for crop telemetry predictions.
+    Restricted to Admins and Super Admins.
+    """
+    model_name = payload.model.lower().replace(" ", "_")
+    valid_models = ["random_forest", "gradient_boosting", "xgboost", "lstm"]
+    if model_name not in valid_models:
+        raise HTTPException(status_code=400, detail=f"Invalid model name. Must be one of: {valid_models}")
+        
+    models_dir = os.path.join(os.path.dirname(__file__), "../../ml/models")
+    
+    # Verify the selected model is actually trained and exists
+    model_path = None
+    if model_name == "random_forest":
+        model_path = os.path.join(models_dir, "random_forest", "model.pkl")
+    elif model_name == "gradient_boosting":
+        model_path = os.path.join(models_dir, "gradient_boosting", "model.pkl")
+    elif model_name == "xgboost":
+        model_path = os.path.join(models_dir, "xgboost", "model.pkl")
+    elif model_name == "lstm":
+        model_path = os.path.join(models_dir, "lstm", "model.keras")
+        
+    if model_path and not os.path.exists(model_path):
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Model '{payload.model}' has not been successfully trained yet. Please run training first."
+        )
+        
+    config_path = os.path.join(models_dir, "../production_model.json")
+    try:
+        # Save to top level ml/production_model.json
+        with open(config_path, "w") as f:
+            json.dump({"model": model_name, "production_model": model_name}, f, indent=4)
+        # Save copy to ml/models/production_model.json
+        with open(os.path.join(models_dir, "production_model.json"), "w") as f:
+            json.dump({"model": model_name, "production_model": model_name}, f, indent=4)
+            
+        # Copy the selected production model to default model paths for compatibility
+        import shutil
+        import pickle
+        # Root fallback model path
+        root_dest = os.path.join(models_dir, "irrigation_model.pkl")
+        if model_name != "lstm":
+            shutil.copy2(model_path, root_dest)
+            # Also copy to rf_regressor.pkl, rf_classifier.pkl etc. to keep main.py happy
+            for fname in ["rf_regressor.pkl", "rf_classifier.pkl", "rf_risk_classifier.pkl"]:
+                shutil.copy2(model_path, os.path.join(models_dir, fname))
+                
+        return {
+            "status": "success",
+            "production_model": model_name,
+            "message": f"Successfully set '{payload.model}' as the active production model."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to set production model: {str(e)}")
+
+@router.get("/api/ml/comparison-results", response_model=Dict[str, Any])
+def get_ml_comparison_results(
+    current_admin: models.User = Depends(get_current_admin)
+):
+    """
+    Retrieves the metrics and scoring of all trained models for dashboard visualization.
+    Restricted to Admins and Super Admins.
+    """
+    results_path = os.path.join(os.path.dirname(__file__), "../../ml/model_comparison.json")
+    if os.path.exists(results_path):
+        try:
+            with open(results_path, "r") as f:
+                data = json.load(f)
+                
+            # Add production model key
+            prod_model = "xgboost"
+            prod_path = os.path.join(os.path.dirname(__file__), "../../ml/production_model.json")
+            if os.path.exists(prod_path):
+                with open(prod_path, "r") as pf:
+                    prod_model = json.load(pf).get("model", json.load(pf).get("production_model", "xgboost"))
+            
+            # Map new model_comparison.json format to legacy format for frontend page.tsx
+            legacy_results = []
+            models_dict = data.get("results", data.get("models", {}))
+            
+            # Random Forest
+            rf_data = models_dict.get("random_forest", {})
+            if rf_data and rf_data.get("status") != "not_applicable":
+                legacy_results.append({
+                    "name": "Random Forest",
+                    "r2": rf_data.get("r2"),
+                    "mae": rf_data.get("mae"),
+                    "rmse": rf_data.get("rmse"),
+                    "mse": rf_data.get("rmse", 0) ** 2 if rf_data.get("rmse") else 0.0,
+                    "training_time": rf_data.get("training_time_seconds"),
+                    "prediction_time_ms": rf_data.get("prediction_time_ms"),
+                    "model_size_kb": rf_data.get("model_size_kb"),
+                    "status": "success",
+                    "explanation": "Random Forest Regressor trained successfully."
+                })
+                
+            # Gradient Boosting
+            gb_data = models_dict.get("gradient_boosting", {})
+            if gb_data and gb_data.get("status") != "not_applicable":
+                legacy_results.append({
+                    "name": "Gradient Boosting",
+                    "r2": gb_data.get("r2"),
+                    "mae": gb_data.get("mae"),
+                    "rmse": gb_data.get("rmse"),
+                    "mse": gb_data.get("rmse", 0) ** 2 if gb_data.get("rmse") else 0.0,
+                    "training_time": gb_data.get("training_time_seconds"),
+                    "prediction_time_ms": gb_data.get("prediction_time_ms"),
+                    "model_size_kb": gb_data.get("model_size_kb"),
+                    "status": "success",
+                    "explanation": "Gradient Boosting Regressor trained successfully."
+                })
+                
+            # XGBoost
+            xgb_data = models_dict.get("xgboost", {})
+            if xgb_data and xgb_data.get("status") != "not_applicable":
+                legacy_results.append({
+                    "name": "XGBoost",
+                    "r2": xgb_data.get("r2"),
+                    "mae": xgb_data.get("mae"),
+                    "rmse": xgb_data.get("rmse"),
+                    "mse": xgb_data.get("rmse", 0) ** 2 if xgb_data.get("rmse") else 0.0,
+                    "training_time": xgb_data.get("training_time_seconds"),
+                    "prediction_time_ms": xgb_data.get("prediction_time_ms"),
+                    "model_size_kb": xgb_data.get("model_size_kb"),
+                    "status": "success",
+                    "explanation": "XGBoost Regressor trained successfully."
+                })
+                
+            # LSTM
+            lstm_data = models_dict.get("lstm", {})
+            if lstm_data and "r2" in lstm_data and lstm_data.get("status") != "not_applicable":
+                legacy_results.append({
+                    "name": "LSTM",
+                    "r2": lstm_data.get("r2"),
+                    "mae": lstm_data.get("mae"),
+                    "rmse": lstm_data.get("rmse"),
+                    "mse": lstm_data.get("rmse", 0) ** 2 if lstm_data.get("rmse") else 0.0,
+                    "training_time": lstm_data.get("training_time_seconds"),
+                    "prediction_time_ms": lstm_data.get("prediction_time_ms"),
+                    "model_size_kb": lstm_data.get("model_size_kb"),
+                    "status": "success",
+                    "explanation": "LSTM trained successfully with sequential sequence windowing."
+                })
+            else:
+                legacy_results.append({
+                    "name": "LSTM",
+                    "r2": None,
+                    "mae": None,
+                    "rmse": None,
+                    "mse": None,
+                    "training_time": None,
+                    "prediction_time_ms": None,
+                    "model_size_kb": lstm_data.get("model_size_kb", 0),
+                    "status": "not_applicable",
+                    "explanation": lstm_data.get("reason", "LSTM not applicable — insufficient temporal data.")
+                })
+            
+            # Identify best accuracy model (highest R2)
+            active_models = [r for r in legacy_results if r["status"] == "success"]
+            best_acc_model = "xgboost"
+            if active_models:
+                best_acc_model = max(active_models, key=lambda x: x["r2"])["name"].lower().replace(" ", "_")
+                
+            transformed_data = {
+                "dataset_shape": data.get("dataset_shape", [data.get("dataset", {}).get("rows", 0), data.get("dataset", {}).get("columns", 0)]),
+                "results": legacy_results,
+                "best_model": best_acc_model,
+                "production_model": prod_model
+            }
+            return transformed_data
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading comparison results: {e}")
+            
+    raise HTTPException(status_code=404, detail="No comparison results found. Please train models first.")
+
+
+@router.get("/api/ml/model-comparison", response_model=Dict[str, Any])
+def get_ml_model_comparison(
+    current_admin: models.User = Depends(get_current_admin)
+):
+    """
+    Retrieves the ML models benchmark metrics, winners, and overall comparison scoring.
+    Restricted to Admins and Super Admins.
+    """
+    results_path = os.path.join(os.path.dirname(__file__), "../../ml/model_comparison.json")
+    if not os.path.exists(results_path):
+        raise HTTPException(status_code=404, detail="No comparison results found. Please train models first.")
+        
+    try:
+        with open(results_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        # Map models dict to models list
+        models_list = []
+        for name_key, m in data.get("results", {}).items():
+            if m.get("status") == "evaluated":
+                models_list.append({
+                    "name": m.get("name"),
+                    "r2": m.get("r2"),
+                    "mae": m.get("mae"),
+                    "rmse": m.get("rmse"),
+                    "training_time_seconds": m.get("training_time_seconds"),
+                    "prediction_time_ms": m.get("prediction_time_ms"),
+                    "model_size_kb": m.get("model_size_kb"),
+                    "status": "evaluated"
+                })
+            else:
+                models_list.append({
+                    "name": m.get("name"),
+                    "r2": None,
+                    "mae": None,
+                    "rmse": None,
+                    "training_time_seconds": None,
+                    "prediction_time_ms": None,
+                    "model_size_kb": None,
+                    "status": "not_applicable",
+                    "reason": m.get("reason", "Insufficient chronological/time-series data")
+                })
+                
+        response_data = {
+            "models": models_list,
+            "best_predictive_model": data.get("best_predictive_model"),
+            "fastest_model": data.get("fastest_model"),
+            "lowest_error_model": data.get("lowest_error_model"),
+            "best_overall_model": data.get("best_overall_model"),
+            "manual_production_selection": True
+        }
+        return response_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading comparison results: {str(e)}")
+
 

@@ -2,9 +2,21 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useSpeech } from "@/hooks/useSpeech";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/services/api";
+import { 
+  Brain, 
+  Droplet, 
+  TrendingUp, 
+  Sparkles,
+  AlertTriangle,
+  Lightbulb,
+  CloudRain,
+  Mic,
+  ArrowRight,
+  TrendingDown
+} from "lucide-react";
 
 interface Farm {
   id: string;
@@ -19,6 +31,8 @@ interface Field {
 interface Crop {
   id: string;
   name: string;
+  variety?: string;
+  status: string;
 }
 
 interface Recommendation {
@@ -30,21 +44,18 @@ interface Recommendation {
   best_irrigation_time?: string;
   risk_level: string;
   confidence_score: number;
-}
-
-interface VoiceResponse {
-  text_english: string;
-  text_translated: string;
-  audio_base64: string | null;
-  language: string;
+  features_snapshot?: {
+    soil_moisture?: number;
+    temperature?: number;
+    humidity?: number;
+    wind_speed?: number;
+    rain_probability?: number;
+  };
 }
 
 export default function AIRecommendationPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  
-  // Speech hooks
-  const { isListening, startListening, stopListening, speak, cancelSpeech } = useSpeech();
 
   // State
   const [farms, setFarms] = useState<Farm[]>([]);
@@ -54,11 +65,7 @@ export default function AIRecommendationPage() {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
-  
-  const [language, setLanguage] = useState("hi-IN"); // Default to Hindi
-  const [transcribedText, setTranscribedText] = useState("");
-  const [aiTextResponse, setAiTextResponse] = useState("");
-  const [loadingAudio, setLoadingAudio] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,24 +76,25 @@ export default function AIRecommendationPage() {
 
   useEffect(() => {
     if (user) {
-      // Preset user preferred language if supported
-      if (["hi-IN", "kn-IN", "en-IN"].includes(user.preferred_language)) {
-        setLanguage(user.preferred_language);
-      }
       loadFarms();
     }
   }, [user]);
 
   const loadFarms = async () => {
+    setLoading(true);
     try {
       const data = await api.get<Farm[]>("/farms");
       setFarms(data);
       if (data.length > 0) {
         setSelectedFarm(data[0]);
         fetchFields(data[0].id);
+      } else {
+        setLoading(false);
       }
     } catch (err) {
       console.error(err);
+      setError("Failed to load farms list");
+      setLoading(false);
     }
   };
 
@@ -97,9 +105,15 @@ export default function AIRecommendationPage() {
       if (data.length > 0) {
         setSelectedField(data[0]);
         fetchCropsAndRecommendation(data[0].id);
+      } else {
+        setSelectedField(null);
+        setCrops([]);
+        setRecommendation(null);
+        setLoading(false);
       }
     } catch (err) {
       console.error(err);
+      setLoading(false);
     }
   };
 
@@ -113,13 +127,16 @@ export default function AIRecommendationPage() {
       } else {
         setSelectedCrop(null);
         setRecommendation(null);
+        setLoading(false);
       }
     } catch (err) {
       console.error(err);
+      setLoading(false);
     }
   };
 
   const fetchRecommendation = async (cropId: string) => {
+    setLoading(true);
     try {
       const data = await api.get<Recommendation[]>(`/recommendations?crop_id=${cropId}`);
       if (data.length > 0) {
@@ -129,6 +146,8 @@ export default function AIRecommendationPage() {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -156,286 +175,230 @@ export default function AIRecommendationPage() {
     }
   };
 
-  // Trigger Voice Input
-  const handleMicClick = () => {
-    if (isListening) {
-      stopListening();
-      return;
-    }
-    
-    setError(null);
-    setTranscribedText("");
-    setAiTextResponse("");
-    cancelSpeech();
-
-    startListening(language, async (resultText) => {
-      setTranscribedText(resultText);
-      await processVoiceIntent(resultText);
-    });
-  };
-
-  // Simple Intent Parser
-  const processVoiceIntent = async (queryText: string) => {
-    if (!recommendation) {
-      const respText = "No telemetry logs found. Please simulate sensor values first.";
-      setAiTextResponse(respText);
-      speak(respText, language);
-      return;
-    }
-
-    setLoadingAudio(true);
-    try {
-      // 1. Fetch translated recommendation details from backend
-      const voiceRes = await api.get<VoiceResponse>(
-        `/recommendations/${recommendation.id}/audio?target_lang=${language}`
-      );
-      
-      const cleanQuery = queryText.toLowerCase();
-      
-      // Basic rule matching for specific questions:
-      let customResponseEn = voiceRes.text_english;
-      let isSpecificQuery = false;
-
-      // check if user asked about water quantity only
-      if (cleanQuery.includes("water") || cleanQuery.includes("quantity") || cleanQuery.includes("पानी") || cleanQuery.includes("ನೀರು") || cleanQuery.includes("ಪ್ರಮಾಣ")) {
-        customResponseEn = recommendation.is_irrigation_required
-          ? `The recommended water volume is ${recommendation.recommended_water_volume_liters} liters per square meter.`
-          : `No water is needed. The soil moisture is optimal.`;
-        isSpecificQuery = true;
-      }
-      // check if user asked about risk
-      else if (cleanQuery.includes("risk") || cleanQuery.includes("जोखिम") || cleanQuery.includes("ಅಪಾಯ")) {
-        customResponseEn = `The current crop risk level is ${recommendation.risk_level}.`;
-        isSpecificQuery = true;
-      }
-
-      if (isSpecificQuery) {
-        // Translate custom query text through backend if needed
-        const transRes = await api.get<VoiceResponse>(
-          `/recommendations/${recommendation.id}/audio?target_lang=${language}`
-        );
-        // We can translate offline or do a quick text request. For simplicity, translate offline/locally
-        // Or fetch voiceRes directly
-        const targetText = await translateTextOffline(customResponseEn, language);
-        setAiTextResponse(targetText);
-        speak(targetText, language);
-      } else {
-        // Speak the full translation
-        setAiTextResponse(voiceRes.text_translated);
-        speak(voiceRes.text_translated, language, voiceRes.audio_base64);
-      }
-    } catch (err) {
-      setError("Failed to fetch audio from Sarvam AI backend. Check backend logs.");
-      console.error(err);
-    } finally {
-      setLoadingAudio(false);
-    }
-  };
-
-  // Local helper for offline query translation
-  const translateTextOffline = async (text: string, lang: string): Promise<string> => {
-    // Offline dictionary helper
-    if (lang === "en-IN") return text;
-    
-    // Simple lookups
-    const dict: { [key: string]: { [lang: string]: string } } = {
-      "The recommended water volume is ": {
-        "hi-IN": "सिफारिश की गई पानी की मात्रा ",
-        "kn-IN": "ಶಿಫಾರಸು ಮಾಡಿದ ನೀರಿನ ಪ್ರಮಾಣ "
-      },
-      " liters per square meter.": {
-        "hi-IN": " लीटर प्रति वर्ग मीटर है।",
-        "kn-IN": " ಲೀಟರ್ ಪ್ರತಿ ಚದರ ಮೀಟರ್ ಆಗಿದೆ."
-      },
-      "No water is needed. The soil moisture is optimal.": {
-        "hi-IN": "पानी की आवश्यकता नहीं है। मिट्टी की नमी अनुकूल है।",
-        "kn-IN": "ನೀರಿನ ಅಗತ್ಯವಿಲ್ಲ. ಮಣ್ಣಿನ ತೇವಾಂಶವು ಸೂಕ್ತವಾಗಿದೆ."
-      },
-      "The current crop risk level is ": {
-        "hi-IN": "वर्तमान फसल जोखिम स्तर ",
-        "kn-IN": "ಪ್ರಸ್ತುತ ಬೆಳೆ ಅಪಾಯದ ಮಟ್ಟ "
-      },
-      "low": {
-        "hi-IN": "निम्न है।",
-        "kn-IN": "ಕಡಿಮೆ ಆಗಿದೆ."
-      },
-      "medium": {
-        "hi-IN": "मध्यम है।",
-        "kn-IN": "ಮಧ್ಯಮ ಆಗಿದೆ."
-      },
-      "high": {
-        "hi-IN": "उच्च है।",
-        "kn-IN": "ಹೆಚ್ಚು ಆಗಿದೆ."
-      }
-    };
-
-    let result = text;
-    for (const [key, langMap] of Object.entries(dict)) {
-      if (langMap[lang]) {
-        result = result.replace(key, langMap[lang]);
-      }
-    }
-    return result;
+  const triggerVoiceAssistant = () => {
+    window.dispatchEvent(new CustomEvent("open-voice-assistant"));
   };
 
   if (authLoading) return null;
 
+  // Visual calculations based on model metrics
+  const waterSavedLiters = recommendation 
+    ? Math.max(0, 1200 - (recommendation.recommended_water_volume_liters * 10)) 
+    : 350;
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
+      <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Header */}
-        <div className="border-b border-neutral-800/80 pb-6">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-            <span>🎙️</span> Regional Voice Assistant
-          </h1>
-          <p className="text-neutral-400 text-sm mt-1">
-            Speak to AgriSmart in your local language to get AI irrigation recommendations
-          </p>
-        </div>
-
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs px-4 py-3 rounded-xl">
-            {error}
-          </div>
-        )}
-
-        {/* Selection filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-5 shadow-lg">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-neutral-900 pb-6">
           <div>
-            <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Language</label>
-            <select
-              value={language}
-              onChange={(e) => {
-                setLanguage(e.target.value);
-                setTranscribedText("");
-                setAiTextResponse("");
-                cancelSpeech();
-              }}
-              className="w-full bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 rounded-xl p-2.5 outline-none"
-            >
-              <option value="hi-IN">Hindi (हिन्दी)</option>
-              <option value="kn-IN">Kannada (ಕನ್ನಡ)</option>
-              <option value="en-IN">English (India)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Farm</label>
-            <select
-              value={selectedFarm?.id || ""}
-              onChange={handleFarmChange}
-              className="w-full bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 rounded-xl p-2.5 outline-none"
-            >
-              {farms.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Field</label>
-            <select
-              value={selectedField?.id || ""}
-              onChange={handleFieldChange}
-              className="w-full bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 rounded-xl p-2.5 outline-none"
-            >
-              {fields.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Crop</label>
-            <select
-              value={selectedCrop?.id || ""}
-              onChange={handleCropChange}
-              className="w-full bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 rounded-xl p-2.5 outline-none"
-            >
-              {crops.length === 0 ? (
-                <option value="">No Active Crops</option>
-              ) : (
-                crops.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))
-              )}
-            </select>
-          </div>
-        </div>
-
-        {/* Voice Assistant Core panel */}
-        <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-8 shadow-2xl flex flex-col items-center justify-center text-center gap-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-transparent blur-3xl rounded-bl-3xl pointer-events-none" />
-          
-          <div className="space-y-2">
-            <h3 className="text-lg font-bold text-white">Ask AgriSmart Pro</h3>
-            <p className="text-neutral-400 text-xs max-w-sm leading-relaxed">
-              Click the microphone button and ask: <br />
-              <span className="text-indigo-400 font-semibold italic">&quot;Is irrigation required?&quot;</span> or <br />
-              <span className="text-indigo-400 font-semibold italic">&quot;क्या सिंचाई की आवश्यकता है?&quot;</span> or <br />
-              <span className="text-indigo-400 font-semibold italic">&quot;ನೀರಾವರಿ ಅಗತ್ಯವಿದೆಯೇ?&quot;</span>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+              <Brain className="w-8 h-8 text-emerald-500" />
+              AI Recommendation
+            </h1>
+            <p className="text-neutral-450 text-xs mt-1 font-semibold">
+              Deep machine learning insights based on moisture sequences and meteorological metrics
             </p>
           </div>
 
-          {/* Microphone trigger */}
-          <div className="flex flex-col items-center justify-center gap-3">
-            <button
-              onClick={handleMicClick}
-              disabled={loadingAudio}
-              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl cursor-pointer ${
-                isListening
-                  ? "bg-rose-500 shadow-rose-500/30 scale-95"
-                  : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30 hover:scale-105"
-              }`}
-            >
-              {isListening ? (
-                <div className="flex gap-1.5 justify-center items-center">
-                  <span className="w-1.5 h-7 bg-white rounded-full animate-[bounce_0.8s_infinite_-0.2s]" />
-                  <span className="w-1.5 h-10 bg-white rounded-full animate-[bounce_0.8s_infinite]" />
-                  <span className="w-1.5 h-7 bg-white rounded-full animate-[bounce_0.8s_infinite_-0.2s]" />
-                </div>
-              ) : (
-                <span className="text-3xl text-white">🎙️</span>
-              )}
-            </button>
-            <span className="text-[10px] text-neutral-400 font-semibold uppercase tracking-widest mt-1">
-              {isListening ? "Listening... Speak now" : "Click to Speak"}
-            </span>
+          {/* Selector filters */}
+          {farms.length > 0 && (
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <div className="flex-1 sm:flex-initial">
+                <select
+                  value={selectedFarm?.id || ""}
+                  onChange={handleFarmChange}
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
+                >
+                  {farms.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex-1 sm:flex-initial">
+                <select
+                  value={selectedField?.id || ""}
+                  onChange={handleFieldChange}
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
+                >
+                  {fields.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex-1 sm:flex-initial">
+                <select
+                  value={selectedCrop?.id || ""}
+                  onChange={handleCropChange}
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
+                >
+                  {crops.length === 0 ? (
+                    <option value="">No Active Crops</option>
+                  ) : (
+                    crops.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {loading ? (
+          <div className="py-16 flex justify-center">
+            <span className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
           </div>
-
-          {/* Speech transcription & response displays */}
-          {(transcribedText || aiTextResponse || loadingAudio) && (
-            <div className="w-full space-y-4 text-left border-t border-neutral-800/80 pt-6 mt-2 max-w-lg">
-              {transcribedText && (
-                <div className="bg-neutral-950/60 border border-neutral-800/40 p-4 rounded-2xl">
-                  <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider block">You Said</span>
-                  <p className="text-sm font-semibold text-neutral-200 mt-1">{transcribedText}</p>
+        ) : !recommendation ? (
+          <div className="glass-panel rounded-3xl p-10 text-center max-w-xl mx-auto space-y-6 shadow-md border border-neutral-900">
+            <div className="text-4xl">🤖</div>
+            <h3 className="text-base font-bold text-white">Awaiting Simulation Logs</h3>
+            <p className="text-neutral-450 text-xs leading-relaxed max-w-sm mx-auto">
+              Telemetry parameters must be recorded to prompt the machine learning engine for crop schedule recommendations.
+            </p>
+            <Link href="/sensors" className="bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-bold px-4 py-2.5 rounded-xl inline-block mt-4">
+              Access Telemetry Simulator
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* Primary Recommendation Card */}
+            <div className="glass-panel rounded-3xl p-6 shadow-lg border border-neutral-900 md:col-span-2 space-y-6">
+              
+              <div className="flex justify-between items-start border-b border-neutral-900 pb-4">
+                <div>
+                  <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider block">Target crop</span>
+                  <h3 className="text-lg font-black text-white mt-0.5">{selectedCrop?.name || "Crop"}</h3>
                 </div>
-              )}
-
-              {loadingAudio && (
-                <div className="flex items-center gap-2 text-xs text-neutral-400 px-4">
-                  <span className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                  <span>AI is thinking & translating...</span>
+                <div className="text-right">
+                  <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider block">ML Confidence</span>
+                  <span className="text-base font-black text-emerald-450">{(recommendation.confidence_score * 100).toFixed(0)}%</span>
                 </div>
-              )}
+              </div>
 
-              {aiTextResponse && (
-                <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-2xl">
-                  <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider block">Assistant response</span>
-                  <p className="text-xs text-neutral-300 mt-1.5 leading-relaxed">{aiTextResponse}</p>
-                  
-                  <div className="flex items-center gap-2 mt-4 text-[9px] text-emerald-400 font-bold uppercase bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl w-fit">
-                    <span className="animate-pulse">🔊</span> Speaking (Sarvam Voice TTS)
+              {/* Status Box */}
+              <div className={`p-5 rounded-2xl border ${
+                recommendation.is_irrigation_required
+                  ? "bg-rose-500/5 border-rose-500/20 text-rose-300"
+                  : "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"
+              }`}>
+                <span className="text-[9px] font-black uppercase tracking-widest block">AI Decision</span>
+                <h4 className="text-lg font-extrabold mt-1">
+                  {recommendation.is_irrigation_required 
+                    ? "⚠️ Irrigation Recommended (Irrigate Now)" 
+                    : "🟢 Moisture Satisfactory (Hold Water)"}
+                </h4>
+                <p className="text-xs mt-1.5 opacity-90 leading-relaxed">
+                  Based on sequenced soil readings and 24h cloud predictions, the Random Forest model recommends {recommendation.is_irrigation_required ? "applying water" : "skipping irrigation"}.
+                </p>
+              </div>
+
+              {recommendation.is_irrigation_required && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-neutral-950/60 border border-neutral-900 p-4 rounded-2xl flex items-center gap-3">
+                    <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                      <Droplet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-neutral-500 font-bold uppercase block">Water Volume</span>
+                      <span className="text-lg font-black text-white block mt-0.5">{recommendation.recommended_water_volume_liters} Liters</span>
+                      <span className="text-[8px] text-neutral-500 block">per sq. meter</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-neutral-950/60 border border-neutral-900 p-4 rounded-2xl flex items-center gap-3">
+                    <div className="p-3 bg-sky-500/10 text-sky-400 rounded-xl">
+                      <CloudRain className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-neutral-500 font-bold uppercase block">Best Execution Time</span>
+                      <span className="text-sm font-bold text-neutral-200 block mt-1.5">
+                        {recommendation.best_irrigation_time 
+                          ? new Date(recommendation.best_irrigation_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                          : "Early Morning"}
+                      </span>
+                      <span className="text-[8px] text-neutral-500 block">evaporation optimized</span>
+                    </div>
                   </div>
                 </div>
               )}
+
+              {/* Climate Reasoning Checklist */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Lightbulb className="w-4 h-4 text-emerald-400" />
+                  Meteorological Reasoning
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-neutral-350">
+                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
+                    <span className="text-xs">🌡️</span>
+                    <span>Temperature: <strong className="text-white">{recommendation.features_snapshot?.temperature?.toFixed(1) || 28.5}°C</strong></span>
+                  </div>
+                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
+                    <span className="text-xs">💦</span>
+                    <span>Soil Moisture: <strong className="text-white">{(recommendation.features_snapshot?.soil_moisture || 35.0).toFixed(0)}%</strong></span>
+                  </div>
+                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
+                    <span className="text-xs">☁️</span>
+                    <span>Rain Chance: <strong className="text-white">{((recommendation.features_snapshot?.rain_probability || 0.1) * 100).toFixed(0)}%</strong></span>
+                  </div>
+                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
+                    <span className="text-xs">💨</span>
+                    <span>Wind Speed: <strong className="text-white">{recommendation.features_snapshot?.wind_speed?.toFixed(1) || 8.2} km/h</strong></span>
+                  </div>
+                </div>
+              </div>
+
             </div>
-          )}
 
-        </div>
+            {/* Side insights metrics */}
+            <div className="space-y-6">
+              
+              {/* Water Saving Estimates */}
+              <div className="glass-panel rounded-3xl p-6 shadow-md border border-neutral-900 space-y-4">
+                <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  Water Conservation
+                </h3>
+                
+                <div className="space-y-2 text-center py-2">
+                  <span className="text-3xl font-black text-emerald-400 block">{waterSavedLiters.toLocaleString()} Liters</span>
+                  <p className="text-[10px] text-neutral-400 max-w-[200px] mx-auto leading-normal">
+                    Estimated water saved this week by delaying schedules in response to soil telemetry updates.
+                  </p>
+                </div>
+              </div>
 
+              {/* Regional speech translation trigger */}
+              <div className="glass-panel rounded-3xl p-6 shadow-md border border-neutral-900 text-center space-y-4 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-500/10 to-transparent blur-lg rounded-bl-3xl" />
+                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/25">
+                  <Mic className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Listen in Local Language</h3>
+                  <p className="text-[10px] text-neutral-450 mt-1 max-w-[180px] mx-auto leading-normal">
+                    Query recommendations directly via voice speech translation (Hindi & Kannada).
+                  </p>
+                </div>
+                <button
+                  onClick={triggerVoiceAssistant}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-2.5 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 shadow-md active:scale-98"
+                >
+                  Ask Assistant
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+        )}
       </div>
     </div>
   );

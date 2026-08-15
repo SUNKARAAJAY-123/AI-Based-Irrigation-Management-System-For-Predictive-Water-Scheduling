@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { api } from "@/services/api";
@@ -21,7 +22,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  register: (data: any) => Promise<any>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
 }
@@ -74,7 +75,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await api.get<User>("/users/profile");
       setUser(profile);
       
-      router.push("/dashboard");
+      const roleLower = profile.role.toLowerCase();
+      if (roleLower === "admin" || roleLower === "super_admin") {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err) {
       setLoading(false);
       throw err;
@@ -84,15 +90,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (userData: any) => {
     setLoading(true);
     try {
-      const res = await api.post<{ access_token: string }>("/users/register", userData);
-      localStorage.setItem("auth_token", res.access_token);
-      setToken(res.access_token);
+      const res = await api.post<{ access_token?: string, success?: boolean, status?: string, message?: string }>("/users/register", userData);
       
-      // Fetch profile
-      const profile = await api.get<User>("/users/profile");
-      setUser(profile);
-      
-      router.push("/dashboard");
+      if (res.access_token) {
+        localStorage.setItem("auth_token", res.access_token);
+        setToken(res.access_token);
+        
+        // Fetch profile
+        const profile = await api.get<User>("/users/profile");
+        setUser(profile);
+        
+        const roleLower = profile.role.toLowerCase();
+        if (roleLower === "admin" || roleLower === "super_admin") {
+          router.push("/admin");
+        } else {
+          router.push("/dashboard");
+        }
+        return { success: true, pending: false };
+      } else {
+        setToken(null);
+        setUser(null);
+        setLoading(false);
+        return { success: true, pending: true, message: res.message };
+      }
     } catch (err) {
       setLoading(false);
       throw err;

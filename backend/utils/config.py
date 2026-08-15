@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     ML_MODELS_PATH: str = "../ml/models"
     ML_DEFAULT_SOIL_MOISTURE_THRESHOLD: float = 0.35
     CROP_OPTIMIZATION_MODEL_TYPE: str = "random_forest"
+    PREFERRED_IRRIGATION_WINDOW: str = "05:00-09:00"
 
     # Load environment variables from .env
     model_config = SettingsConfigDict(

@@ -23,7 +23,11 @@ interface UserRecord {
   id: string;
   email: string;
   full_name: string;
+  phone_number?: string;
+  state?: string;
+  district?: string;
   role: string;
+  status?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -83,7 +87,7 @@ interface ReportSummary {
   recommendations_count: number;
 }
 
-type TabType = "overview" | "users" | "farms" | "fields" | "sensors" | "predictions" | "weather" | "notifications" | "reports" | "settings";
+type TabType = "overview" | "users" | "requests" | "farms" | "fields" | "sensors" | "predictions" | "weather" | "notifications" | "reports" | "settings";
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -97,6 +101,7 @@ export default function AdminPage() {
   // Loaded Data
   const [stats, setStats] = useState<Stats | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [requests, setRequests] = useState<UserRecord[]>([]);
   const [farms, setFarms] = useState<FarmRecord[]>([]);
   const [fields, setFields] = useState<FieldRecord[]>([]);
   const [sensors, setSensors] = useState<SensorRecord[]>([]);
@@ -111,6 +116,9 @@ export default function AdminPage() {
 
   // Filters & Broadcast State
   const [userSearch, setUserSearch] = useState("");
+  const [requestSearch, setRequestSearch] = useState("");
+  const [requestFilter, setRequestFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [requestPage, setRequestPage] = useState(1);
   const [broadcastTitle, setBroadcastTitle] = useState("");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [broadcastCategory, setBroadcastCategory] = useState("alert");
@@ -120,7 +128,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (params && params.tab) {
       const tab = params.tab as TabType;
-      const validTabs: TabType[] = ["overview", "users", "farms", "fields", "sensors", "predictions", "weather", "notifications", "reports", "settings"];
+      const validTabs: TabType[] = ["overview", "users", "requests", "farms", "fields", "sensors", "predictions", "weather", "notifications", "reports", "settings"];
       if (validTabs.includes(tab)) {
         setActiveTab(tab);
       }
@@ -133,10 +141,13 @@ export default function AdminPage() {
     if (!authLoading) {
       if (!user) {
         router.push("/login");
-      } else if (user.role !== "admin") {
-        router.push("/dashboard");
       } else {
-        loadAdminData();
+        const roleLower = user.role.toLowerCase();
+        if (roleLower !== "admin" && roleLower !== "super_admin") {
+          router.push("/dashboard");
+        } else {
+          loadAdminData();
+        }
       }
     }
   }, [user, authLoading, router]);
@@ -149,9 +160,19 @@ export default function AdminPage() {
       const fetchedStats = await api.get<Stats>("/admin/stats");
       setStats(fetchedStats);
 
-      // Users
-      const fetchedUsers = await api.get<UserRecord[]>("/admin/users");
-      setUsers(fetchedUsers);
+      const isSuper = user && user.role.toLowerCase() === "super_admin";
+      if (isSuper) {
+        // Users
+        const fetchedUsers = await api.get<UserRecord[]>("/admin/users");
+        setUsers(fetchedUsers);
+
+        // Pending Admin Requests
+        const fetchedRequests = await api.get<UserRecord[]>("/admin/requests");
+        setRequests(fetchedRequests);
+      } else {
+        setUsers([]);
+        setRequests([]);
+      }
 
       // Land details
       const fetchedFarms = await api.get<FarmRecord[]>("/admin/farms");
@@ -223,6 +244,31 @@ export default function AdminPage() {
     }
   };
 
+  const handleApproveRequest = async (requestId: string) => {
+    setError(null);
+    setSuccess(null);
+    try {
+      await api.post<UserRecord>(`/admin/requests/${requestId}/approve`, {});
+      setSuccess("Admin request approved successfully.");
+      await loadAdminData();
+    } catch (err) {
+      setError((err as Error).message || "Failed to approve admin request");
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    setError(null);
+    setSuccess(null);
+    const reason = prompt("Please enter a rejection reason (optional):") || "";
+    try {
+      await api.post<UserRecord>(`/admin/requests/${requestId}/reject`, { rejection_reason: reason });
+      setSuccess("Admin request rejected successfully.");
+      await loadAdminData();
+    } catch (err) {
+      setError((err as Error).message || "Failed to reject admin request");
+    }
+  };
+
   const handleBroadcastNotification = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -267,6 +313,21 @@ export default function AdminPage() {
     u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
+  const filteredRequests = (
+    requestFilter === "pending"
+      ? requests
+      : requestFilter === "approved"
+      ? users.filter(u => u.role.toUpperCase() === "ADMIN")
+      : users.filter(u => u.role.toUpperCase() === "ADMIN_PENDING" && u.status?.toUpperCase() === "REJECTED")
+  ).filter(r =>
+    r.full_name.toLowerCase().includes(requestSearch.toLowerCase()) ||
+    r.email.toLowerCase().includes(requestSearch.toLowerCase())
+  );
+
+  const requestsPerPage = 10;
+  const totalRequestPages = Math.ceil(filteredRequests.length / requestsPerPage);
+  const paginatedRequests = filteredRequests.slice((requestPage - 1) * requestsPerPage, requestPage * requestsPerPage);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
       <div className="absolute top-0 right-1/4 w-[400px] h-[400px] bg-sky-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
@@ -310,19 +371,27 @@ export default function AdminPage() {
 
         {/* Tab Selection */}
         <div className="flex flex-wrap gap-2 border-b border-neutral-900 pb-3">
-          {(["overview", "users", "farms", "fields", "sensors", "predictions", "weather", "notifications", "reports", "settings"] as TabType[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => handleTabChange(tab)}
-              className={`text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer capitalize ${
-                activeTab === tab
-                  ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
-                  : "text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              {tab === "farms" ? "Farms" : tab === "notifications" ? "Notifications" : tab}
-            </button>
-          ))}
+          {(["overview", "users", "requests", "farms", "fields", "sensors", "predictions", "weather", "notifications", "reports", "settings"] as TabType[])
+            .filter((tab) => {
+              const isSuper = user && user.role.toLowerCase() === "super_admin";
+              if (tab === "users" || tab === "requests") {
+                return isSuper;
+              }
+              return true;
+            })
+            .map((tab) => (
+              <button
+                key={tab}
+                onClick={() => handleTabChange(tab)}
+                className={`text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer capitalize ${
+                  activeTab === tab
+                    ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                {tab === "farms" ? "Farms" : tab === "notifications" ? "Notifications" : tab === "requests" ? "Admin Requests" : tab}
+              </button>
+            ))}
         </div>
 
         {/* -------------------- 1. OVERVIEW TAB -------------------- */}
@@ -482,6 +551,145 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* -------------------- ADMIN REQUESTS TAB -------------------- */}
+        {activeTab === "requests" && (
+          <div className="space-y-6">
+            {/* Search and Filters Bar */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              {/* Sub-status selector */}
+              <div className="flex gap-2 bg-neutral-900 p-1 rounded-xl border border-neutral-800">
+                {(["pending", "approved", "rejected"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => {
+                      setRequestFilter(filter);
+                      setRequestPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer capitalize ${
+                      requestFilter === filter
+                        ? "bg-neutral-800 text-white"
+                        : "text-neutral-400 hover:text-neutral-200"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Box */}
+              <input
+                type="text"
+                placeholder="Search requests by name or email..."
+                value={requestSearch}
+                onChange={(e) => {
+                  setRequestSearch(e.target.value);
+                  setRequestPage(1);
+                }}
+                className="w-full sm:w-64 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-xs text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-sky-500/50"
+              />
+            </div>
+
+            {/* Requests Table */}
+            <div className="bg-neutral-900/20 border border-neutral-800/80 rounded-3xl overflow-hidden shadow-xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-neutral-900/80 text-neutral-400 font-bold border-b border-neutral-800">
+                    <th className="p-4">Full Name</th>
+                    <th className="p-4">Email</th>
+                    <th className="p-4">Phone</th>
+                    <th className="p-4">Location</th>
+                    <th className="p-4">Registration Date</th>
+                    <th className="p-4">Requested Role</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-900 text-neutral-200">
+                  {paginatedRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-neutral-900/10">
+                      <td className="p-4 font-bold">{req.full_name}</td>
+                      <td className="p-4 text-neutral-400">{req.email}</td>
+                      <td className="p-4 text-neutral-450">{req.phone_number || "N/A"}</td>
+                      <td className="p-4 text-neutral-450">{req.district ? `${req.district}, ${req.state}` : "N/A"}</td>
+                      <td className="p-4 text-neutral-400">
+                        {new Date(req.created_at).toLocaleDateString("en-IN")} {new Date(req.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="p-4">
+                        <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20">
+                          ADMIN
+                        </span>
+                      </td>
+                      <td className="p-4 capitalize">
+                        <span className={`font-bold ${
+                          req.status === "ACTIVE" 
+                            ? "text-emerald-400" 
+                            : req.status === "REJECTED" 
+                            ? "text-rose-400" 
+                            : "text-amber-400"
+                        }`}>
+                          {req.status ? req.status.toLowerCase() : "pending"}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right space-x-2">
+                        {req.status === "PENDING" || (req.role === "ADMIN_PENDING" && req.status !== "REJECTED") ? (
+                          <>
+                            <button
+                              onClick={() => handleApproveRequest(req.id)}
+                              className="px-3 py-1.5 rounded-xl font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 text-[10px] cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectRequest(req.id)}
+                              className="px-3 py-1.5 rounded-xl font-bold bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 text-[10px] cursor-pointer"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-neutral-500 italic font-semibold capitalize">
+                            Processed ({req.status ? req.status.toLowerCase() : "pending"})
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {paginatedRequests.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-neutral-500 font-semibold italic">
+                        No registration requests found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {totalRequestPages > 1 && (
+              <div className="flex justify-end gap-2 mt-4 text-xs font-bold">
+                <button
+                  disabled={requestPage === 1}
+                  onClick={() => setRequestPage(p => p - 1)}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 disabled:opacity-50 cursor-pointer"
+                >
+                  Previous
+                </button>
+                <span className="py-1.5 px-3 text-neutral-400">
+                  Page {requestPage} of {totalRequestPages}
+                </span>
+                <button
+                  disabled={requestPage === totalRequestPages}
+                  onClick={() => setRequestPage(p => p + 1)}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 disabled:opacity-50 cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -5,6 +5,18 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/api";
 import Link from "next/link";
+import { 
+  Droplet, 
+  Sprout, 
+  CloudSun, 
+  Brain, 
+  Volume2, 
+  BarChart3, 
+  Layers, 
+  PlusCircle, 
+  Compass, 
+  AlertCircle 
+} from "lucide-react";
 
 interface Farm {
   id: string;
@@ -59,7 +71,7 @@ interface Weather {
 }
 
 export default function DashboardPage() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   // State
@@ -90,7 +102,6 @@ export default function DashboardPage() {
     setLoadingData(true);
     setError(null);
     try {
-      // 1. Fetch Farms
       const fetchedFarms = await api.get<Farm[]>("/farms");
       setFarms(fetchedFarms);
       
@@ -110,11 +121,9 @@ export default function DashboardPage() {
 
   const loadFarmDetails = async (farm: Farm) => {
     try {
-      // Fetch fields
       const fetchedFields = await api.get<Field[]>(`/fields?farm_id=${farm.id}`);
       setFields(fetchedFields);
 
-      // Fetch Weather
       const weather = await api.get<Weather>(`/weather?farm_id=${farm.id}`);
       setWeatherData(weather);
 
@@ -137,17 +146,14 @@ export default function DashboardPage() {
 
   const loadFieldDetails = async (field: Field) => {
     try {
-      // Fetch crops
       const crops = await api.get<Crop[]>(`/crops?field_id=${field.id}`);
       if (crops.length > 0) {
         const firstCrop = crops[0];
         setCrop(firstCrop);
 
-        // Fetch recommendations
         const recs = await api.get<Recommendation[]>(`/recommendations?crop_id=${firstCrop.id}`);
         if (recs.length > 0) {
           setRecommendation(recs[0]);
-          // Set moisture snapshot from features if present
           const snapshot = recs[0].features_snapshot;
           if (snapshot && typeof snapshot.soil_moisture === "number") {
             setLatestMoisture(snapshot.soil_moisture);
@@ -188,306 +194,334 @@ export default function DashboardPage() {
 
   if (authLoading || (loadingData && farms.length === 0 && !error)) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+      <div className="min-h-screen bg-[#090d0b] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <span className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs text-neutral-400 font-bold uppercase tracking-wider">Syncing dashboard...</p>
+          <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest">Syncing telemetry data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      {/* Background glowing elements */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none -z-10" />
+    <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
+      {/* Background radial highlight */}
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
       
-      {/* Header */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-neutral-800/80 pb-6 mb-8 gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-500/20 tracking-wider uppercase">
-              AI Powered Irrigation
-            </span>
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-400 bg-clip-text text-transparent sm:text-4xl">
-            Farmer Dashboard
-          </h1>
-          <p className="text-neutral-400 text-sm mt-1">
-            Welcome back, {user?.full_name}. Real-time analytics from your fields.
-          </p>
-        </div>
-
-        {/* Farm & Field Selection Dropdowns */}
-        {farms.length > 0 && (
-          <div className="flex flex-wrap gap-3 w-full md:w-auto">
-            <div className="flex-1 sm:flex-initial">
-              <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Select Farm</label>
-              <select
-                value={selectedFarm?.id || ""}
-                onChange={(e) => handleFarmChange(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50"
-              >
-                {farms.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* Header Section */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-neutral-900 pb-6 gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold px-2.5 py-1 rounded-full border border-emerald-500/25 tracking-widest uppercase">
+                🛰️ AgriSmart Dashboard
+              </span>
             </div>
-            
-            {fields.length > 0 && (
+            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Predictive Telemetry
+            </h1>
+            <p className="text-neutral-400 text-xs mt-1 font-semibold">
+              Hello, {user?.full_name}. Here is the active climate and field logs.
+            </p>
+          </div>
+
+          {/* Farm and Field Selectors */}
+          {farms.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
               <div className="flex-1 sm:flex-initial">
-                <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Select Field</label>
+                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">Active Farm</label>
                 <select
-                  value={selectedField?.id || ""}
-                  onChange={(e) => handleFieldChange(e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50"
+                  value={selectedFarm?.id || ""}
+                  onChange={(e) => handleFarmChange(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2.5 outline-none focus:border-emerald-500/50 font-bold"
                 >
-                  {fields.map((f) => (
+                  {farms.map((f) => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
                 </select>
               </div>
-            )}
+              
+              {fields.length > 0 && (
+                <div className="flex-1 sm:flex-initial">
+                  <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">Active Partition</label>
+                  <select
+                    value={selectedField?.id || ""}
+                    onChange={(e) => handleFieldChange(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2.5 outline-none focus:border-emerald-500/50 font-bold"
+                  >
+                    {fields.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+        </header>
+
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-450 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
-      </header>
 
-      {/* If No Farms Exist */}
-      {farms.length === 0 && !loadingData && (
-        <div className="bg-neutral-900/40 border border-neutral-800 rounded-3xl p-12 text-center max-w-xl mx-auto shadow-2xl backdrop-blur-md space-y-6">
-          <div className="text-5xl">🚜</div>
-          <h2 className="text-xl font-bold text-white">Let&apos;s Get Started!</h2>
-          <p className="text-neutral-400 text-xs leading-relaxed">
-            Welcome to AgriSmart Pro! To utilize the AI model recommendations, soil moisture tracking, and weather forecasts, you need to register a farm and add a field.
-          </p>
-          <div className="flex justify-center gap-4">
-            <Link
-              href="/farms"
-              className="bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm px-6 py-3 rounded-xl transition-all duration-200"
-            >
-              Add Your Farm
-            </Link>
+        {/* If No Farms Exist */}
+        {farms.length === 0 && !loadingData && (
+          <div className="glass-panel rounded-3xl p-10 text-center max-w-xl mx-auto space-y-6 my-12 shadow-xl border border-neutral-900">
+            <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+              <Sprout className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Let&apos;s Set Up Your Farm</h2>
+            <p className="text-neutral-450 text-xs leading-relaxed max-w-sm mx-auto">
+              Get real-time AI-based recommendations, moisture dials, and meteorology updates by registering your land.
+            </p>
+            <div className="flex justify-center">
+              <Link
+                href="/farms"
+                className="bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-extrabold text-xs px-6 py-3 rounded-xl transition-transform hover:scale-102"
+              >
+                Register Your Farm
+              </Link>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Main Dashboard Layout */}
-      {farms.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Column 1: Soil Moisture & Crop Overview */}
-          <div className="lg:col-span-2 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Telemetry Card */}
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md flex flex-col justify-between">
-                <h3 className="text-sm font-bold text-neutral-300 mb-4 flex items-center gap-2">
-                  <span>💧</span> Soil Moisture Level
-                </h3>
-                
-                <div className="flex flex-col items-center justify-center py-4">
+        {/* Grid Layout */}
+        {farms.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            {/* 1. Soil Moisture Gauge Card */}
+            <div className="glass-panel rounded-3xl p-6 shadow-md flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                    <Droplet className="w-4 h-4 text-emerald-400" />
+                    Soil Moisture VWC
+                  </h3>
+                  {latestMoisture !== null && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                      latestMoisture < 35 
+                        ? "bg-rose-500/10 border-rose-500/20 text-rose-450" 
+                        : latestMoisture < 70 
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                          : "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                    }`}>
+                      {latestMoisture < 35 ? "Dry" : latestMoisture < 70 ? "Optimal" : "Saturated"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-center justify-center py-6">
                   {latestMoisture !== null ? (
                     <div className="relative flex items-center justify-center w-36 h-36">
+                      {/* Gauge Ring background */}
                       <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                        <path className="text-neutral-800" strokeWidth="2.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path className="text-emerald-500 transition-all duration-500" strokeDasharray={`${latestMoisture}, 100`} strokeWidth="2.5" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <circle className="text-neutral-900" strokeWidth="2.5" stroke="currentColor" fill="none" r="16" cx="18" cy="18" />
+                        <circle 
+                          className="text-emerald-500 transition-all duration-700 ease-out" 
+                          strokeDasharray={`${latestMoisture}, 100`} 
+                          strokeWidth="2.5" 
+                          strokeLinecap="round" 
+                          stroke="currentColor" 
+                          fill="none" 
+                          r="16" cx="18" cy="18" 
+                        />
                       </svg>
                       <div className="absolute text-center">
                         <span className="text-3xl font-black text-white">{latestMoisture.toFixed(0)}%</span>
-                        <span className="block text-[9px] font-bold text-emerald-400 uppercase tracking-widest mt-0.5">VWC</span>
+                        <span className="block text-[8px] font-black text-neutral-500 uppercase tracking-widest mt-0.5">Volumetric</span>
                       </div>
                     </div>
                   ) : (
                     <div className="text-center py-6">
                       <p className="text-xs text-neutral-500 font-bold uppercase">No readings logged</p>
                       <Link href="/sensors" className="text-emerald-400 text-xs font-bold underline mt-2 inline-block">
-                        Add/Simulate Sensor
-                      </Link>
-                    </div>
-                  )}
-                  
-                  {latestMoisture !== null && (
-                    <span className="text-xs text-neutral-300 mt-4 font-semibold">
-                      {latestMoisture < 35 ? "🔴 Critical Dryness" : latestMoisture < 70 ? "🟢 Optimal Moisture" : "🔵 Waterlogged"}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="border-t border-neutral-800/80 pt-4 mt-2">
-                  <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Field Status</span>
-                  <p className="text-xs text-neutral-200 mt-1">
-                    Soil: <span className="font-bold text-white capitalize">{selectedField?.soil_type || "Loam"}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Crop Stats Card */}
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-neutral-300 mb-4 flex items-center gap-2">
-                    <span>🌾</span> Crop Information
-                  </h3>
-                  
-                  {crop ? (
-                    <div className="space-y-4">
-                      <div>
-                        <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Active Crop</span>
-                        <h4 className="text-xl font-extrabold text-white mt-1">{crop.name}</h4>
-                        <span className="text-xs text-neutral-400">{crop.variety || "Local Variety"}</span>
-                      </div>
-                      
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 p-3.5 rounded-xl">
-                        <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider block">Crop Stage</span>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-xs font-semibold text-neutral-200 capitalize">{crop.status}</span>
-                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">Growing Healthy</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-xs text-neutral-500 font-bold uppercase mb-3">No Crop Added</p>
-                      <Link
-                        href="/fields"
-                        className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700/60 text-xs font-bold px-4 py-2 rounded-xl"
-                      >
-                        Register Crop
+                        Setup Sensors
                       </Link>
                     </div>
                   )}
                 </div>
-
-                <div className="border-t border-neutral-800/80 pt-4">
-                  <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Area Size</span>
-                  <p className="text-xs text-neutral-200 mt-1">
-                    Hectares: <span className="font-bold text-white">{selectedField?.area_hectares} ha</span>
-                  </p>
-                </div>
               </div>
 
+              <div className="border-t border-neutral-900 pt-4 mt-2 flex justify-between text-xs text-neutral-450">
+                <span>Soil Type:</span>
+                <span className="font-bold text-white capitalize">{selectedField?.soil_type || "Loam"}</span>
+              </div>
             </div>
 
-            {/* Weather Forecast Summary */}
+            {/* 2. Crop Details Card */}
+            <div className="glass-panel rounded-3xl p-6 shadow-md flex flex-col justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                  <Sprout className="w-4 h-4 text-emerald-400" />
+                  Active Crop Growth
+                </h3>
+
+                {crop ? (
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-[10px] text-neutral-500 font-bold block uppercase">Planted Variety</span>
+                      <h4 className="text-xl font-extrabold text-white mt-0.5">{crop.name}</h4>
+                      <p className="text-xs text-neutral-450">{crop.variety || "Standard seed class"}</p>
+                    </div>
+
+                    <div className="bg-neutral-950/60 border border-neutral-900 p-3.5 rounded-2xl flex justify-between items-center">
+                      <div>
+                        <span className="text-[9px] text-emerald-400 font-black block uppercase tracking-wider">Growth Stage</span>
+                        <span className="text-xs text-neutral-250 font-bold capitalize mt-0.5 block">{crop.status}</span>
+                      </div>
+                      <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase px-2.5 py-1 rounded-full">
+                        Healthy
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-xs text-neutral-500 font-bold uppercase mb-4">No Crop Added</p>
+                    <Link
+                      href="/fields"
+                      className="bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-bold px-4 py-2.5 rounded-xl inline-block"
+                    >
+                      Register Crop
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {crop && (
+                <div className="border-t border-neutral-900 pt-4 mt-2 flex justify-between text-xs text-neutral-450">
+                  <span>Field Area:</span>
+                  <span className="font-bold text-white">{selectedField?.area_hectares} ha</span>
+                </div>
+              )}
+            </div>
+
+            {/* 3. AI recommendation Decision Card */}
+            <div className="glass-panel rounded-3xl p-6 shadow-md relative overflow-hidden flex flex-col justify-between col-span-1 md:col-span-2 lg:col-span-1">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/5 to-transparent blur-xl rounded-bl-3xl" />
+              
+              <div>
+                <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                  <Brain className="w-4 h-4 text-emerald-400" />
+                  Predictive AI Schedules
+                </h3>
+
+                {recommendation ? (
+                  <div className="space-y-4">
+                    <div className={`p-4 rounded-2xl border ${
+                      recommendation.is_irrigation_required
+                        ? "bg-rose-500/5 border-rose-500/20 text-rose-350"
+                        : "bg-emerald-500/5 border-emerald-500/20 text-emerald-350"
+                    }`}>
+                      <span className="text-[9px] font-black uppercase tracking-widest block">AI Decision</span>
+                      <h4 className="text-base font-extrabold mt-0.5">
+                        {recommendation.is_irrigation_required ? "Irrigation Required" : "Optimal (No Water Needed)"}
+                      </h4>
+                      <p className="text-[10px] mt-1 opacity-80 leading-relaxed">
+                        Confidence evaluation: <span className="font-bold text-white">{(recommendation.confidence_score * 100).toFixed(0)}%</span>
+                      </p>
+                    </div>
+
+                    {recommendation.is_irrigation_required && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-neutral-950/60 border border-neutral-900 p-3 rounded-xl">
+                          <span className="text-[8px] text-neutral-500 font-bold uppercase block">Water Needed</span>
+                          <span className="text-base font-black text-white block mt-1">{recommendation.recommended_water_volume_liters} L</span>
+                          <span className="text-[8px] text-neutral-500 block">per sq. meter</span>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-900 p-3 rounded-xl">
+                          <span className="text-[8px] text-neutral-500 font-bold uppercase block">Best Time</span>
+                          <span className="text-xs font-bold text-neutral-250 block mt-1 truncate">
+                            {recommendation.best_irrigation_time 
+                              ? new Date(recommendation.best_irrigation_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                              : "Early Morning"}
+                          </span>
+                          <span className="text-[8px] text-neutral-500 block">temp optimized</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-xs text-neutral-500 font-bold uppercase">No schedules computed</p>
+                    <Link href="/sensors" className="bg-neutral-900 border border-neutral-800 text-[10px] font-bold px-3 py-2 rounded-xl mt-3 inline-block">
+                      Simulate Readings
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {recommendation && (
+                <div className="pt-4 border-t border-neutral-900 mt-4">
+                  <Link
+                    href="/ai-recommendation"
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-[10px] uppercase tracking-wider py-2.5 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Volume2 className="w-4 h-4 stroke-[2.5]" />
+                    Listen voice advice
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Weather summary forecast card */}
             {weatherData && (
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-sm font-bold text-neutral-300 flex items-center gap-2">
-                    <span>🌤️</span> Weather & Meteorological Forecast
+              <div className="glass-panel rounded-3xl p-6 shadow-md col-span-1 md:col-span-2 lg:col-span-3">
+                <div className="flex justify-between items-center mb-5 border-b border-neutral-900/60 pb-3">
+                  <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                    <CloudSun className="w-4 h-4 text-emerald-400" />
+                    Local Weather Forecast
                   </h3>
-                  <span className="text-xs font-semibold text-sky-400 bg-sky-500/10 border border-sky-500/25 px-2.5 py-1 rounded-full">
+                  <span className="text-xs font-bold text-sky-400 bg-sky-500/10 border border-sky-500/25 px-2.5 py-1 rounded-full">
                     {weatherData.conditions}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                  {weatherData.forecast.map((f, idx) => {
+                {/* Stacks vertically on phone (320px-414px), horizontal grid on larger screens */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                  {weatherData.forecast.slice(0, 5).map((f, idx) => {
                     const date = new Date(f.dt_txt);
                     const dayName = date.toLocaleDateString("en-IN", { weekday: "short" });
                     return (
-                      <div key={idx} className="bg-neutral-950/60 border border-neutral-800/60 rounded-2xl p-4 text-center">
+                      <div key={idx} className="bg-neutral-950/60 border border-neutral-900/60 rounded-2xl p-4 text-center">
                         <span className="text-xs text-neutral-400 font-bold block">{idx === 0 ? "Today" : dayName}</span>
-                        <span className="text-2xl font-black text-white block my-2">{f.temp.toFixed(0)}°</span>
-                        <span className="text-[10px] text-neutral-400 block truncate">{f.description}</span>
-                        <span className="text-[9px] text-sky-400 font-semibold block mt-1.5">🌧️ {(f.rain_probability * 100).toFixed(0)}%</span>
+                        <span className="text-2xl font-black text-white block my-1">{f.temp.toFixed(0)}°</span>
+                        <span className="text-[10px] text-neutral-500 block truncate">{f.description}</span>
+                        <span className="text-[9px] text-sky-400 font-bold block mt-1.5">🌧️ {(f.rain_probability * 100).toFixed(0)}%</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Column 2: AI Irrigation Recommendation Card */}
-          <div className="space-y-8">
-            <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/20 to-transparent blur-2xl rounded-bl-3xl" />
-              
-              <h3 className="text-sm font-bold text-neutral-300 mb-6 flex items-center gap-2">
-                <span>🧠</span> Predictive AI Insights
+            {/* 5. Quick Stats Widget */}
+            <div className="glass-panel rounded-3xl p-6 shadow-md col-span-1 md:col-span-2 lg:col-span-3">
+              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2 mb-4">
+                <BarChart3 className="w-4 h-4 text-emerald-400" />
+                Land Telemetry Summary
               </h3>
-
-              {recommendation ? (
-                <div className="space-y-6">
-                  {/* Status Box */}
-                  <div className={`p-4 rounded-2xl border ${
-                    recommendation.is_irrigation_required
-                      ? "bg-rose-500/10 border-rose-500/25 text-rose-300"
-                      : "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
-                  }`}>
-                    <span className="text-[9px] font-black uppercase tracking-wider block">Decision</span>
-                    <h4 className="text-lg font-black mt-1">
-                      {recommendation.is_irrigation_required ? "⚠️ Irrigation Required" : "🟢 Optimal Moisture (No Irrigation)"}
-                    </h4>
-                    <p className="text-xs mt-1 opacity-90 leading-relaxed">
-                      Confidence score is <span className="font-bold">{(recommendation.confidence_score * 100).toFixed(0)}%</span>. Model type: Random Forest classifier evaluation.
-                    </p>
-                  </div>
-
-                  {recommendation.is_irrigation_required && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 p-4 rounded-2xl">
-                        <span className="text-[9px] text-neutral-400 font-bold uppercase block">Water quantity</span>
-                        <span className="text-2xl font-black text-white block mt-1.5">{recommendation.recommended_water_volume_liters} L</span>
-                        <span className="text-[9px] text-neutral-500 block">per square meter</span>
-                      </div>
-                      
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 p-4 rounded-2xl">
-                        <span className="text-[9px] text-neutral-400 font-bold uppercase block">Best Time</span>
-                        <span className="text-sm font-bold text-neutral-200 block mt-2.5">
-                          {recommendation.best_irrigation_time 
-                            ? new Date(recommendation.best_irrigation_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                            : "Early Morning"}
-                        </span>
-                        <span className="text-[9px] text-neutral-500 block">temperature optimized</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Regional voice advice shortcut button */}
-                  <Link
-                    href="/ai-recommendation"
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 mt-4 cursor-pointer"
-                  >
-                    <span>🎙️</span> Listen in Hindi / Kannada
-                  </Link>
-
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+                <div className="bg-neutral-950/40 border border-neutral-900 p-3 rounded-2xl">
+                  <span className="text-neutral-500 block text-[9px] font-bold uppercase">Registered Farms</span>
+                  <span className="text-base font-extrabold text-white block mt-1">{farms.length}</span>
                 </div>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-xs text-neutral-500 font-bold uppercase">No recommendations generated</p>
-                  <p className="text-[10px] text-neutral-400 mt-1 max-w-[200px] mx-auto leading-relaxed">
-                    Once telemetry readings are logged from your sensor, the AI model will evaluate and post recommendations here.
-                  </p>
-                  <Link href="/sensors" className="bg-neutral-800 border border-neutral-700/60 text-xs font-bold px-4 py-2 rounded-xl mt-4 inline-block">
-                    Go to Sensor Panel
-                  </Link>
+                <div className="bg-neutral-950/40 border border-neutral-900 p-3 rounded-2xl">
+                  <span className="text-neutral-500 block text-[9px] font-bold uppercase">Active Fields</span>
+                  <span className="text-base font-extrabold text-white block mt-1">{fields.length}</span>
                 </div>
-              )}
-            </div>
-            
-            {/* Quick Stats Widget */}
-            <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-              <h3 className="text-sm font-bold text-neutral-300 mb-4">Quick Stats</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-neutral-400">Total Farms Registered</span>
-                  <span className="font-bold text-white">{farms.length}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-neutral-400">Total Fields Configured</span>
-                  <span className="font-bold text-white">{fields.length}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-neutral-400">Current Soil Type</span>
-                  <span className="font-bold text-white capitalize">{selectedFarm?.soil_type || "Loam"}</span>
+                <div className="bg-neutral-950/40 border border-neutral-900 p-3 rounded-2xl col-span-2 sm:col-span-1">
+                  <span className="text-neutral-500 block text-[9px] font-bold uppercase">Soil Classification</span>
+                  <span className="text-base font-extrabold text-white block mt-1 capitalize">{selectedFarm?.soil_type || "Loam"}</span>
                 </div>
               </div>
             </div>
 
           </div>
-
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

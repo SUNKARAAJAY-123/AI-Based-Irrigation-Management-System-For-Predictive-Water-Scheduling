@@ -4,6 +4,16 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/api";
+import { 
+  Sprout, 
+  MapPin, 
+  Trash2, 
+  PlusCircle, 
+  Navigation, 
+  Layers, 
+  CheckCircle2, 
+  AlertCircle 
+} from "lucide-react";
 
 interface Farm {
   id: string;
@@ -136,40 +146,46 @@ export default function FarmsPage() {
   if (authLoading) return null;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
+      <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">Manage Farms</h1>
-          <p className="text-neutral-400 text-sm mt-1">
-            Register and configure your agricultural lands
+        <div className="border-b border-neutral-900 pb-6">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
+            <Sprout className="w-8 h-8 text-emerald-500" />
+            Manage Lands
+          </h1>
+          <p className="text-neutral-450 text-xs mt-1 font-semibold">
+            Register, configure, and monitor your agricultural plots
           </p>
         </div>
 
         {error && (
-          <div className="bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs px-4 py-3 rounded-xl">
-            {error}
+          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-450" />
+            <span>{error}</span>
           </div>
         )}
         
         {success && (
-          <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs px-4 py-3 rounded-xl">
-            {success}
+          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>{success}</span>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Add Farm Form */}
-          <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <span>➕</span> Register New Farm
+          <div className="glass-panel rounded-3xl p-6 shadow-xl border border-neutral-900">
+            <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b border-neutral-900 pb-3">
+              <PlusCircle className="w-5 h-5 text-emerald-400" />
+              Register New Farm
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="farm-name" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
+                <label htmlFor="farm-name" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
                   Farm Name
                 </label>
                 <input
@@ -179,14 +195,14 @@ export default function FarmsPage() {
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  placeholder="Green Valley Farm"
+                  placeholder="Green Valley Plot"
                   autoComplete="off"
-                  className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                 />
               </div>
 
               <div>
-                <label htmlFor="farm-area" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
+                <label htmlFor="farm-area" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
                   Land Area (Hectares)
                 </label>
                 <input
@@ -199,41 +215,42 @@ export default function FarmsPage() {
                   onChange={handleInputChange}
                   placeholder="2.5"
                   autoComplete="off"
-                  className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                 />
               </div>
 
               <div>
-                <label htmlFor="farm-soil" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                  Soil Type
+                <label htmlFor="farm-soil" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
+                  Soil Classification
                 </label>
                 <select
                   id="farm-soil"
                   name="soil_type"
                   value={formData.soil_type}
                   onChange={handleInputChange}
-                  className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
+                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-350 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 font-bold"
                 >
                   <option value="loam">Loam (Optimal)</option>
-                  <option value="clay">Clay (High Water Retention)</option>
-                  <option value="sandy">Sandy (Low Water Retention)</option>
+                  <option value="clay">Clay (High Retention)</option>
+                  <option value="sandy">Sandy (Low Retention)</option>
                   <option value="silt">Silt</option>
                 </select>
               </div>
 
-              {/* Geolocation detection */}
+              {/* Geolocation Section */}
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-                    Geolocation
+                  <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest">
+                    Coordinates GPS
                   </span>
                   <button
                     type="button"
                     onClick={detectLocation}
                     disabled={isDetectingLocation}
-                    className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 cursor-pointer"
+                    className="text-[10px] font-extrabold text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1"
                   >
-                    {isDetectingLocation ? "Detecting..." : "🎯 Auto Detect GPS"}
+                    <Navigation className={`w-3.5 h-3.5 ${isDetectingLocation ? "animate-spin" : ""}`} />
+                    {isDetectingLocation ? "Locating..." : "Auto Detect"}
                   </button>
                 </div>
                 
@@ -246,10 +263,10 @@ export default function FarmsPage() {
                     name="location_latitude"
                     value={formData.location_latitude}
                     onChange={handleInputChange}
-                    placeholder="Latitude (e.g. 15.3)"
+                    placeholder="Latitude"
                     aria-label="Farm Latitude"
                     autoComplete="off"
-                    className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-3 py-2.5 outline-none focus:border-emerald-500/50"
+                    className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                   />
                   <input
                     id="farm-lon"
@@ -259,10 +276,10 @@ export default function FarmsPage() {
                     name="location_longitude"
                     value={formData.location_longitude}
                     onChange={handleInputChange}
-                    placeholder="Longitude (e.g. 76.9)"
+                    placeholder="Longitude"
                     aria-label="Farm Longitude"
                     autoComplete="off"
-                    className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-3 py-2.5 outline-none focus:border-emerald-500/50"
+                    className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                   />
                 </div>
               </div>
@@ -270,59 +287,67 @@ export default function FarmsPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer shadow-lg active:scale-98"
               >
-                {isSubmitting ? "Adding..." : "Add Farm"}
+                {isSubmitting ? "Adding Plot..." : "Register Plot"}
               </button>
             </form>
           </div>
 
           {/* Farm List */}
           <div className="lg:col-span-2 space-y-4">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <span>🏡</span> Your Registered Lands ({farms.length})
+            <h2 className="text-base font-bold flex items-center gap-2 border-b border-neutral-900 pb-3">
+              <Layers className="w-5 h-5 text-emerald-400" />
+              Registered Fields ({farms.length})
             </h2>
 
             {loading ? (
-              <div className="py-12 flex justify-center">
+              <div className="py-16 flex justify-center">
                 <span className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : farms.length === 0 ? (
-              <div className="bg-neutral-900/20 border border-neutral-800/80 rounded-3xl p-12 text-center text-neutral-500 text-xs">
-                No farms registered yet. Please use the registration panel on the left to add one.
+              <div className="bg-neutral-950/40 border border-neutral-900 rounded-3xl p-12 text-center text-neutral-500 text-xs font-semibold">
+                No lands registered yet. Use the registration form to list your first plot.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {farms.map((f) => (
                   <div
                     key={f.id}
-                    className="bg-neutral-900/40 border border-neutral-800/80 p-5 rounded-3xl flex flex-col justify-between hover:border-neutral-700 transition-colors shadow-lg"
+                    className="glass-panel p-5 rounded-3xl flex flex-col justify-between hover:border-emerald-500/20 transition-all duration-200 shadow-md relative overflow-hidden group"
                   >
                     <div>
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-extrabold text-white text-base truncate">{f.name}</h3>
+                      <div className="flex justify-between items-start border-b border-neutral-900 pb-3 mb-3">
+                        <div>
+                          <h3 className="font-extrabold text-white text-base truncate">{f.name}</h3>
+                          <span className="text-[10px] text-neutral-500 capitalize">Soil: {f.soil_type || "Loam"}</span>
+                        </div>
+                        
                         <button
                           onClick={() => handleDelete(f.id)}
-                          className="text-neutral-500 hover:text-rose-400 text-sm cursor-pointer"
-                          title="Delete Farm"
+                          className="p-1.5 hover:bg-rose-500/10 text-neutral-500 hover:text-rose-450 rounded-xl transition-colors cursor-pointer"
+                          title="Delete Farm Plot"
                         >
-                          🗑️
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                      <p className="text-xs text-neutral-400 mt-1 capitalize">Soil: {f.soil_type || "Loam"}</p>
                       
-                      <div className="mt-4 space-y-1.5 text-xs text-neutral-300 bg-neutral-950/60 border border-neutral-800/40 p-3 rounded-xl">
+                      <div className="space-y-2 text-xs bg-neutral-950/40 border border-neutral-900/60 p-3 rounded-2xl">
                         <div className="flex justify-between">
-                          <span className="text-neutral-500">Area:</span>
-                          <span className="font-bold">{f.area_hectares} Hectares</span>
+                          <span className="text-neutral-500">Area Size:</span>
+                          <span className="font-bold text-white">{f.area_hectares} ha</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-neutral-500">Latitude:</span>
-                          <span className="font-mono">{f.location_latitude}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-neutral-500">Longitude:</span>
-                          <span className="font-mono">{f.location_longitude}</span>
+                        <div className="flex justify-between items-center">
+                          <span className="text-neutral-500">Coordinates:</span>
+                          <a 
+                            href={`https://www.google.com/maps/search/?api=1&query=${f.location_latitude},${f.location_longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono font-bold text-emerald-450 hover:underline flex items-center gap-1"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            {f.location_latitude.toFixed(4)}, {f.location_longitude.toFixed(4)}
+                          </a>
                         </div>
                       </div>
                     </div>
