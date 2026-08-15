@@ -1,0 +1,21 @@
+{
+    "model_name": "Tuned Random Forest Regressor",
+    "trained_at": "2026-08-05T20:38:55.522129",
+    "features": [
+        "soil_type",
+        "temperature",
+        "humidity",
+        "rainfall",
+        "soil_moisture",
+        "crop"
+    ],
+    "metrics": {
+        "R2": 0.5431034915749666,
+        "MAE": 2.6091518775452136,
+        "RMSE": 4.366242379376902
+    },
+    "dataset_shape": [
+        10000,
+        20
+    ]
+}

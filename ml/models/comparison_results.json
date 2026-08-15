@@ -1,0 +1,75 @@
+{
+    "weights": {
+        "accuracy": 0.7,
+        "speed": 0.2,
+        "efficiency": 0.1
+    },
+    "dataset_shape": [
+        10000,
+        20
+    ],
+    "results": [
+        {
+            "name": "Random Forest",
+            "mae": 2.6238,
+            "rmse": 4.3813,
+            "r2": 0.5399,
+            "mse": 19.1957,
+            "training_time": 2.0389,
+            "prediction_time": 0.0163,
+            "model_size_kb": 9951.74,
+            "status": "success",
+            "explanation": "Random Forest trained successfully with 100 decision trees.",
+            "accuracy_score": 0.7996,
+            "speed_score": 0.1472,
+            "efficiency_score": 0.0599,
+            "score": 0.5952
+        },
+        {
+            "name": "Gradient Boosting",
+            "mae": 2.5722,
+            "rmse": 4.2288,
+            "r2": 0.5714,
+            "mse": 17.8824,
+            "training_time": 1.683,
+            "prediction_time": 0.0025,
+            "model_size_kb": 382.15,
+            "status": "success",
+            "explanation": "Gradient Boosting Regressor trained successfully.",
+            "accuracy_score": 0.8286,
+            "speed_score": 0.96,
+            "efficiency_score": 0.4132,
+            "score": 0.8133
+        },
+        {
+            "name": "XGBoost",
+            "mae": 2.5906,
+            "rmse": 4.2808,
+            "r2": 0.5608,
+            "mse": 18.3251,
+            "training_time": 0.1883,
+            "prediction_time": 0.0024,
+            "model_size_kb": 273.02,
+            "status": "success",
+            "explanation": "XGBoost Regressor trained successfully.",
+            "accuracy_score": 0.8185,
+            "speed_score": 1.0,
+            "efficiency_score": 1.0,
+            "score": 0.873
+        },
+        {
+            "name": "LSTM",
+            "mae": null,
+            "rmse": null,
+            "r2": null,
+            "mse": null,
+            "training_time": null,
+            "prediction_time": null,
+            "model_size_kb": 64.46,
+            "status": "not_applicable",
+            "explanation": "LSTM Architecture verified & ready. LSTM requires sequential temporal observations. The current dataset does not contain sufficient temporal structure (missing indicators like: ['Timestamp', 'Field_ID', 'Soil_Moisture_History']) for a scientifically valid LSTM comparison."
+        }
+    ],
+    "best_model": "xgboost",
+    "trained_at": "2026-08-10T11:29:08.549015"
+}

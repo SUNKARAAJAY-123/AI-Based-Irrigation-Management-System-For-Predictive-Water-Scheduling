@@ -1,0 +1,5 @@
+{
+    "model": "xgboost",
+    "version": "1.0",
+    "status": "production"
+}

@@ -1,0 +1,33 @@
+{
+    "dataset": "irrigation_master_dataset_v1.csv",
+    "target": "water_required_mm",
+    "train_size": 4000,
+    "test_size": 1000,
+    "random_state": 42,
+    "features": [
+        "crop_type",
+        "crop_growth_stage",
+        "soil_type",
+        "soil_ph",
+        "soil_moisture",
+        "organic_carbon",
+        "electrical_conductivity",
+        "N",
+        "P",
+        "K",
+        "temperature_c",
+        "humidity",
+        "rainfall_mm",
+        "sunlight_hours",
+        "wind_speed_kmh",
+        "season",
+        "irrigation_type",
+        "water_source",
+        "field_area_hectare",
+        "mulching_used",
+        "previous_irrigation_mm",
+        "region",
+        "ET_index"
+    ],
+    "target_type": "derived"
+}

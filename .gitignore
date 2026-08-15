@@ -82,3 +82,9 @@ database/postgres_data/
 database/postgresql.zip
 database/*.log
 
+# ===========================
+# Videos
+# ===========================
+video/
+
+

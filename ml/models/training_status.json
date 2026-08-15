@@ -1,0 +1,79 @@
+{
+    "status": "completed",
+    "current_model": "",
+    "progress": 100,
+    "updated_at": "2026-08-14T21:44:12.079571",
+    "error": null,
+    "results": [
+        {
+            "r2": 0.9344,
+            "mae": 4.4554,
+            "mse": 60.4438,
+            "rmse": 7.7746,
+            "prediction_time_ms": 0.05777,
+            "name": "Random Forest",
+            "training_time": 0.7088,
+            "status": "success",
+            "explanation": "Random Forest Regressor trained successfully.",
+            "model_size_kb": 10458.52
+        },
+        {
+            "r2": 0.9659,
+            "mae": 3.5304,
+            "mse": 31.4016,
+            "rmse": 5.6037,
+            "prediction_time_ms": 0.0038,
+            "name": "Gradient Boosting",
+            "training_time": 2.7697,
+            "status": "success",
+            "explanation": "Gradient Boosting Regressor trained successfully.",
+            "model_size_kb": 424.32
+        },
+        {
+            "name": "XGBoost",
+            "training_time": 0.3406,
+            "status": "success",
+            "explanation": "XGBoost Regressor trained successfully.",
+            "r2": 0.9612,
+            "mae": 3.5971,
+            "mse": 35.7798,
+            "rmse": 5.9816,
+            "prediction_time_ms": 0.00863,
+            "model_size_kb": 277.61
+        },
+        {
+            "name": "LSTM",
+            "r2": -0.0001,
+            "mae": 23.2749,
+            "rmse": 31.3291,
+            "mse": 981.5102,
+            "training_time": 6.3947,
+            "prediction_time_ms": 0.46229,
+            "model_size_kb": 319.41,
+            "status": "success",
+            "explanation": "LSTM trained successfully with sequential sequence windowing."
+        }
+    ],
+    "logs": [
+        "[2026-08-14 21:43:53] Initializing training & comparison pipeline...",
+        "[2026-08-14 21:43:53] Loading dataset from datasets/irrigation_master_dataset_v1.csv...",
+        "[2026-08-14 21:43:53] Successfully loaded dataset: 5000 rows, 26 columns.",
+        "[2026-08-14 21:43:53] Time-series validation: Found valid temporal columns and field sequence mapping: ['timestamp', 'field_id'].",
+        "[2026-08-14 21:43:53] Cleaning dataset and handling outliers...",
+        "[2026-08-14 21:43:53] Engineering ET_index index...",
+        "[2026-08-14 21:43:53] Splitting data into 80/20 train/test sets to prevent leakage...",
+        "[2026-08-14 21:43:54] Data preparation complete. Starting model training...",
+        "[2026-08-14 21:43:54] Training Random Forest...",
+        "[2026-08-14 21:43:54] Finished training Random Forest (R\u00b2=0.9344).",
+        "[2026-08-14 21:43:55] Training Gradient Boosting...",
+        "[2026-08-14 21:43:57] Finished training Gradient Boosting (R\u00b2=0.9659).",
+        "[2026-08-14 21:43:57] Training XGBoost...",
+        "[2026-08-14 21:43:58] Finished training XGBoost (R\u00b2=0.9612).",
+        "[2026-08-14 21:43:58] Preparing data for LSTM sequence training...",
+        "[2026-08-14 21:44:05] Training LSTM sequential model...",
+        "[2026-08-14 21:44:11] Evaluating LSTM predictions...",
+        "[2026-08-14 21:44:12] Finished training LSTM (R\u00b2=-0.0001).",
+        "[2026-08-14 21:44:12] Evaluating and comparing models...",
+        "[2026-08-14 21:44:12] Pipeline training completed successfully!"
+    ]
+}

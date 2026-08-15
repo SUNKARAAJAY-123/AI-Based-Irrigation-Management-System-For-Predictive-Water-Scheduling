@@ -1,0 +1,56 @@
+{
+    "dataset": "irrigation_master_dataset_v1.csv",
+    "target": "water_required_mm",
+    "results": {
+        "random_forest": {
+            "name": "Random Forest",
+            "r2": 0.9344,
+            "mae": 4.4554,
+            "rmse": 7.7746,
+            "training_time_seconds": 0.7088,
+            "prediction_time_ms": 0.05777,
+            "model_size_kb": 10458.52,
+            "overall_score": 79.35,
+            "status": "evaluated"
+        },
+        "gradient_boosting": {
+            "name": "Gradient Boosting",
+            "r2": 0.9659,
+            "mae": 3.5304,
+            "rmse": 5.6037,
+            "training_time_seconds": 2.7697,
+            "prediction_time_ms": 0.0038,
+            "model_size_kb": 424.32,
+            "overall_score": 95.77,
+            "status": "evaluated"
+        },
+        "xgboost": {
+            "name": "XGBoost",
+            "r2": 0.9612,
+            "mae": 3.5971,
+            "rmse": 5.9816,
+            "training_time_seconds": 0.3406,
+            "prediction_time_ms": 0.00863,
+            "model_size_kb": 277.61,
+            "overall_score": 99.38,
+            "status": "evaluated"
+        },
+        "lstm": {
+            "name": "LSTM",
+            "r2": -0.0001,
+            "mae": 23.2749,
+            "rmse": 31.3291,
+            "training_time_seconds": 6.3947,
+            "prediction_time_ms": 0.46229,
+            "model_size_kb": 319.41,
+            "overall_score": 14.94,
+            "status": "evaluated"
+        }
+    },
+    "best_predictive_model": "Gradient Boosting",
+    "fastest_model": "Gradient Boosting",
+    "lowest_error_model": "Gradient Boosting",
+    "best_overall_model": "XGBoost",
+    "production_model": "xgboost",
+    "production_selection_mode": "manual"
+}
