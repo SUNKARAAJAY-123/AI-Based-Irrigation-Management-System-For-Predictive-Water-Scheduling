@@ -29,9 +29,10 @@ class ApiClient {
       const response = await fetch(url, config);
       
       if (response.status === 401) {
-        // Clear token on unauthorized
+        // Clear token on unauthorized and dispatch global auth event
         if (typeof window !== "undefined") {
           localStorage.removeItem("auth_token");
+          window.dispatchEvent(new CustomEvent("unauthorized"));
         }
       }
       
@@ -80,6 +81,14 @@ class ApiClient {
 
   delete<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: "DELETE" });
+  }
+
+  patch<T>(endpoint: string, body: any, options: RequestInit = {}): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
   }
 }
 

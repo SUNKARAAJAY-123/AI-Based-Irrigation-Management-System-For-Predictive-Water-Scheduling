@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,6 +47,7 @@ interface Recommendation {
 }
 
 export default function HistoryPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -197,10 +199,10 @@ export default function HistoryPage() {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
               <Clock className="w-8 h-8 text-emerald-500" />
-              Irrigation History
+              {t("history.title")}
             </h1>
             <p className="text-neutral-450 text-xs mt-1 font-semibold">
-              Track recommended watering schedules and record your applications
+              {t("history.subtitle")}
             </p>
           </div>
 
@@ -208,7 +210,7 @@ export default function HistoryPage() {
           {farms.length > 0 && (
             <div className="flex flex-wrap gap-2.5 w-full sm:w-auto">
               <div className="flex-1 sm:flex-initial min-w-[100px]">
-                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">Farm</label>
+                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">{t("nav.farms")}</label>
                 <select
                   value={selectedFarm?.id || ""}
                   onChange={handleFarmChange}
@@ -221,7 +223,7 @@ export default function HistoryPage() {
               </div>
 
               <div className="flex-1 sm:flex-initial min-w-[100px]">
-                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">Field</label>
+                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">{t("nav.fields")}</label>
                 <select
                   value={selectedField?.id || ""}
                   onChange={handleFieldChange}
@@ -234,14 +236,14 @@ export default function HistoryPage() {
               </div>
 
               <div className="flex-1 sm:flex-initial min-w-[100px]">
-                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">Crop</label>
+                <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">{t("fields.crop")}</label>
                 <select
                   value={selectedCrop?.id || ""}
                   onChange={handleCropChange}
                   className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-2.5 py-2 outline-none focus:border-emerald-500/50 font-bold"
                 >
                   {crops.length === 0 ? (
-                    <option value="">None</option>
+                    <option value="">{t("common.no_data")}</option>
                   ) : (
                     crops.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
@@ -265,7 +267,7 @@ export default function HistoryPage() {
           <div className="flex items-center justify-between border-b border-neutral-900 pb-3 mb-6">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-emerald-400" />
-              Watering Logs & Recommendations
+              {t("history.logs")}
             </h2>
           </div>
 
@@ -276,7 +278,7 @@ export default function HistoryPage() {
           ) : recommendations.length === 0 ? (
             <div className="py-12 text-center text-neutral-500 text-xs font-semibold flex flex-col items-center gap-2">
               <Search className="w-8 h-8 text-neutral-800" />
-              <span>No recommendations recorded. Active telemetry logs are needed.</span>
+              <span>{t("history.no_history")}</span>
             </div>
           ) : (
             <div className="relative border-l border-neutral-800/80 ml-3 pl-6 space-y-6">

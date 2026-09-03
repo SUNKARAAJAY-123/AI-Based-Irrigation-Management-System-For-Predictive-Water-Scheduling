@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -72,6 +73,7 @@ interface Weather {
 }
 
 export default function WeatherPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -208,10 +210,10 @@ export default function WeatherPage() {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
               <CloudSun className="w-8 h-8 text-emerald-500" />
-              Meteorology Telemetry
+              {t("weather.title")}
             </h1>
             <p className="text-neutral-450 text-xs mt-1 font-semibold">
-              Live weather predictions and seasonal farm guidance
+              {t("weather.subtitle")}
             </p>
           </div>
 
@@ -231,7 +233,7 @@ export default function WeatherPage() {
                     : "text-neutral-400 hover:text-white disabled:opacity-40"
                 }`}
               >
-                Farm Lands
+                {t("nav.farms")}
               </button>
               <button
                 type="button"
@@ -242,7 +244,7 @@ export default function WeatherPage() {
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                Coordinates GPS
+                {t("farms.coordinates")}
               </button>
             </div>
 
@@ -268,14 +270,14 @@ export default function WeatherPage() {
           <div className="glass-panel rounded-3xl p-5 shadow-xl border border-neutral-900">
             {farms.length === 0 && (
               <p className="text-[10px] text-amber-400/85 font-black uppercase tracking-widest mb-3 block">
-                ⚠️ Register a farm plot first, or inspect manual coordinates below:
+                ⚠️ {t("farms.no_farms")}
               </p>
             )}
             <form onSubmit={handleCustomCoordinatesFetch} className="flex flex-col md:flex-row items-end gap-4">
               <div className="flex-1 grid grid-cols-2 gap-3 w-full">
                 <div>
                   <label htmlFor="gps-lat" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
-                    Latitude
+                    {t("farms.latitude")}
                   </label>
                   <input
                     id="gps-lat"
@@ -290,7 +292,7 @@ export default function WeatherPage() {
                 </div>
                 <div>
                   <label htmlFor="gps-lon" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
-                    Longitude
+                    {t("farms.longitude")}
                   </label>
                   <input
                     id="gps-lon"
@@ -312,7 +314,7 @@ export default function WeatherPage() {
                   className="flex-1 md:flex-initial bg-neutral-950 hover:bg-neutral-900 text-emerald-450 border border-neutral-900 font-bold text-xs px-4 py-3 rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center justify-center gap-1"
                 >
                   <Navigation className={`w-3.5 h-3.5 ${isDetectingLocation ? "animate-spin" : ""}`} />
-                  {isDetectingLocation ? "Locating..." : "Auto Detect"}
+                  {isDetectingLocation ? t("common.loading") : t("farms.auto_detect")}
                 </button>
                 <button
                   type="submit"

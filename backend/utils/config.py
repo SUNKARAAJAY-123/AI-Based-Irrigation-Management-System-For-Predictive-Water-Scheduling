@@ -39,11 +39,33 @@ class Settings(BaseSettings):
     SARVAM_AI_API_KEY: Optional[str] = None
     SARVAM_AI_BASE_URL: str = "https://api.sarvam.ai"
 
+    # Notification Service Credentials
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+    SENDGRID_FROM_EMAIL: Optional[str] = None
+    VAPID_PUBLIC_KEY: Optional[str] = None
+    VAPID_PRIVATE_KEY: Optional[str] = None
+    VAPID_CLAIM_EMAIL: str = "admin@example.com"
+
     # ML Configs
     ML_MODELS_PATH: str = "../ml/models"
     ML_DEFAULT_SOIL_MOISTURE_THRESHOLD: float = 0.35
     CROP_OPTIMIZATION_MODEL_TYPE: str = "random_forest"
     PREFERRED_IRRIGATION_WINDOW: str = "05:00-09:00"
+
+    # Sensor failure and missing check timeouts (in minutes)
+    SENSOR_WARNING_TIMEOUT_MINUTES: int = 30
+    SENSOR_CRITICAL_TIMEOUT_MINUTES: int = 60
+
+    # Notification cooldowns (in minutes)
+    COOLDOWN_CRITICAL_MINUTES: int = 30
+    COOLDOWN_WARNING_MINUTES: int = 120
+    COOLDOWN_INFO_MINUTES: int = 1440
+
+    # Scheduled checker cycle interval (in seconds)
+    SCHEDULED_CHECK_INTERVAL_SECONDS: int = 60
 
     # Load environment variables from .env
     model_config = SettingsConfigDict(

@@ -50,8 +50,8 @@ def init_db():
     print("Initializing database...")
     initdb_path = os.path.join(PG_DIR, "bin", "initdb.exe")
     
-    # Run initdb: username postgres, auth-method trust (no password check locally for convenience)
-    cmd = [initdb_path, "-U", "postgres", "-A", "trust", "-D", DATA_DIR]
+    # Run initdb: username postgres, auth-method trust, encoding UTF8
+    cmd = [initdb_path, "-U", "postgres", "-A", "trust", "-E", "UTF8", "-D", DATA_DIR]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         print("Error during initdb:")

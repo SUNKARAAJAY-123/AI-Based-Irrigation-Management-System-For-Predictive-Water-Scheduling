@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -90,6 +91,7 @@ interface ReportSummary {
 type TabType = "overview" | "users" | "requests" | "farms" | "fields" | "sensors" | "predictions" | "weather" | "notifications" | "reports" | "settings";
 
 export default function AdminPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();

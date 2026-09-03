@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "@/context/LanguageContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/services/api";
@@ -39,6 +40,8 @@ interface Recommendation {
   id: string;
   crop_id: string;
   timestamp: string;
+  moisture_level: number;
+  recommendation_text: string;
   recommended_water_volume_liters: number;
   is_irrigation_required: boolean;
   best_irrigation_time?: string;
@@ -54,6 +57,7 @@ interface Recommendation {
 }
 
 export default function AIRecommendationPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -67,6 +71,38 @@ export default function AIRecommendationPage() {
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Farmer Feedback state (TC136)
+  const [feedbackForm, setFeedbackForm] = useState<{
+    followed_status: "Followed" | "Partially Followed" | "Not Followed";
+    reason?: string;
+    explanation?: string;
+  }>({
+    followed_status: "Followed",
+    reason: "",
+    explanation: ""
+  });
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const handleFeedbackSubmit = async () => {
+    if (!recommendation) return;
+    setIsSubmittingFeedback(true);
+    setFeedbackMsg(null);
+    try {
+      await api.post("/farmer/feedback", {
+        recommendation_id: recommendation.id,
+        followed_status: feedbackForm.followed_status,
+        reason: feedbackForm.explanation || feedbackForm.followed_status,
+        explanation: feedbackForm.explanation
+      });
+      setFeedbackMsg(t("feedback.submitted") || "Feedback submitted successfully!");
+    } catch (err) {
+      alert((err as Error).message || "Failed to submit feedback");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -92,15 +128,14 @@ export default function AIRecommendationPage() {
         setLoading(false);
       }
     } catch (err) {
-      console.error(err);
-      setError("Failed to load farms list");
+      setError((err as Error).message || "Failed to load farms");
       setLoading(false);
     }
   };
 
   const fetchFields = async (farmId: string) => {
     try {
-      const data = await api.get<Field[]>(`/fields?farm_id=${farmId}`);
+      const data = await api.get<Field[]>(`/farms/${farmId}/fields`);
       setFields(data);
       if (data.length > 0) {
         setSelectedField(data[0]);
@@ -108,29 +143,30 @@ export default function AIRecommendationPage() {
       } else {
         setSelectedField(null);
         setCrops([]);
+        setSelectedCrop(null);
         setRecommendation(null);
         setLoading(false);
       }
     } catch (err) {
-      console.error(err);
+      setError((err as Error).message || "Failed to load fields");
       setLoading(false);
     }
   };
 
   const fetchCropsAndRecommendation = async (fieldId: string) => {
     try {
-      const data = await api.get<Crop[]>(`/crops?field_id=${fieldId}`);
-      setCrops(data);
-      if (data.length > 0) {
-        setSelectedCrop(data[0]);
-        fetchRecommendation(data[0].id);
+      const cropsData = await api.get<Crop[]>(`/fields/${fieldId}/crops`);
+      setCrops(cropsData);
+      if (cropsData.length > 0) {
+        setSelectedCrop(cropsData[0]);
+        fetchRecommendation(cropsData[0].id);
       } else {
         setSelectedCrop(null);
         setRecommendation(null);
         setLoading(false);
       }
     } catch (err) {
-      console.error(err);
+      setError((err as Error).message || "Failed to load crops");
       setLoading(false);
     }
   };
@@ -138,14 +174,14 @@ export default function AIRecommendationPage() {
   const fetchRecommendation = async (cropId: string) => {
     setLoading(true);
     try {
-      const data = await api.get<Recommendation[]>(`/recommendations?crop_id=${cropId}`);
-      if (data.length > 0) {
+      const data = await api.get<Recommendation[]>(`/crops/${cropId}/recommendations`);
+      if (data && data.length > 0) {
         setRecommendation(data[0]);
       } else {
         setRecommendation(null);
       }
     } catch (err) {
-      console.error(err);
+      setError((err as Error).message || "Failed to fetch AI recommendation");
     } finally {
       setLoading(false);
     }
@@ -195,10 +231,10 @@ export default function AIRecommendationPage() {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
               <Brain className="w-8 h-8 text-emerald-500" />
-              AI Recommendation
+              {t("ai_tools.title")}
             </h1>
             <p className="text-neutral-450 text-xs mt-1 font-semibold">
-              Deep machine learning insights based on moisture sequences and meteorological metrics
+              {t("ai_tools.subtitle")}
             </p>
           </div>
 
@@ -236,7 +272,7 @@ export default function AIRecommendationPage() {
                   className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
                 >
                   {crops.length === 0 ? (
-                    <option value="">No Active Crops</option>
+                    <option value="">{t("common.no_data")}</option>
                   ) : (
                     crops.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
@@ -351,6 +387,66 @@ export default function AIRecommendationPage() {
                     <span className="text-xs">💨</span>
                     <span>Wind Speed: <strong className="text-white">{recommendation.features_snapshot?.wind_speed?.toFixed(1) || 8.2} km/h</strong></span>
                   </div>
+                </div>
+              </div>
+
+              {/* Farmer AI Feedback Submission Form (TC136) */}
+              <div className="border-t border-neutral-900 pt-5 mt-5 space-y-3">
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  {t("feedback.title") || "Recommendation Feedback"}
+                </h4>
+                <p className="text-[11px] text-neutral-400 font-medium">
+                  {t("feedback.status") || "Did you follow this AI recommendation?"}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(["Followed", "Partially Followed", "Not Followed"] as const).map((statusVal) => {
+                    const keyMap = {
+                      "Followed": "feedback.followed",
+                      "Partially Followed": "feedback.partially_followed",
+                      "Not Followed": "feedback.not_followed"
+                    };
+                    const label = t(keyMap[statusVal]) || statusVal;
+                    const isSelected = feedbackForm.followed_status === statusVal;
+                    return (
+                      <button
+                        key={statusVal}
+                        type="button"
+                        onClick={() => setFeedbackForm(prev => ({ ...prev, followed_status: statusVal }))}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                          isSelected
+                            ? "bg-emerald-500 text-neutral-950 border-emerald-400 font-extrabold shadow"
+                            : "bg-neutral-950 border-neutral-900 text-neutral-400 hover:text-white"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {feedbackMsg && (
+                  <p className="text-xs text-emerald-400 font-bold flex items-center gap-1 pt-1">
+                    ✓ {feedbackMsg}
+                  </p>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={feedbackForm.explanation}
+                    onChange={(e) => setFeedbackForm(prev => ({ ...prev, explanation: e.target.value }))}
+                    placeholder={t("feedback.reason") || "Reason / Notes (Optional)"}
+                    className="flex-1 bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3.5 py-2 outline-none focus:border-emerald-500/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleFeedbackSubmit}
+                    disabled={isSubmittingFeedback}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow whitespace-nowrap"
+                  >
+                    {isSubmittingFeedback ? t("common.loading") : t("feedback.submit")}
+                  </button>
                 </div>
               </div>
 

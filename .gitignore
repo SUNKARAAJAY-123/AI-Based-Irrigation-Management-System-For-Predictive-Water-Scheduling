@@ -83,8 +83,9 @@ database/postgresql.zip
 database/*.log
 
 # ===========================
-# Videos
+# Testing / Playwright
 # ===========================
-video/
+playwright-report/
+test-results/
 
 

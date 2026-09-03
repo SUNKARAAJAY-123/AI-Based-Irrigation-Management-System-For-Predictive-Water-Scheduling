@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +42,7 @@ interface Recommendation {
 }
 
 export default function SensorsPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -100,7 +102,12 @@ export default function SensorsPage() {
         setLoading(false);
       }
     } catch (err) {
-      setError((err as Error).message || "Failed to load farms");
+      const errMsg = (err as Error).message || "Failed to load farms";
+      if (errMsg.includes("Not authenticated") || errMsg.includes("401")) {
+        router.push("/login");
+        return;
+      }
+      setError(errMsg);
       setLoading(false);
     }
   };
@@ -249,16 +256,16 @@ export default function SensorsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">Sensors & Telemetry</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">{t("sensors.title")}</h1>
             <p className="text-neutral-400 text-sm mt-1">
-              Register nodes and push real-time telemetry inputs
+              {t("sensors.subtitle")}
             </p>
           </div>
 
           {farms.length > 0 && (
             <div className="flex gap-3">
               <div>
-                <label htmlFor="farm-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Farm</label>
+                <label htmlFor="farm-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">{t("fields.active_farm")}</label>
                 <select
                   id="farm-select-header"
                   value={selectedFarm?.id || ""}
@@ -273,7 +280,7 @@ export default function SensorsPage() {
               
               {fields.length > 0 && (
                 <div>
-                  <label htmlFor="field-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Field</label>
+                  <label htmlFor="field-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">{t("nav.fields")}</label>
                   <select
                     id="field-select-header"
                     value={selectedField?.id || ""}
@@ -304,12 +311,12 @@ export default function SensorsPage() {
 
         {fields.length === 0 ? (
           <div className="bg-neutral-900/40 border border-neutral-800 rounded-3xl p-12 text-center max-w-xl mx-auto shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">No Fields Found</h2>
+            <h2 className="text-lg font-bold text-white mb-2">{t("sensors.no_fields")}</h2>
             <p className="text-xs text-neutral-400 mb-6">
-              You must add a field to your farm before registering telemetry sensors.
+              {t("common.no_data")}
             </p>
             <Link href="/fields" className="bg-emerald-500 text-neutral-950 font-bold text-xs px-5 py-3 rounded-xl">
-              Configure Fields
+              {t("sensors.configure_fields")}
             </Link>
           </div>
         ) : (
@@ -319,13 +326,13 @@ export default function SensorsPage() {
             <div className="space-y-6">
               <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
                 <h2 className="text-base font-bold mb-4 flex items-center gap-2">
-                  <span>⚡</span> Register Sensor Node
+                  <span>⚡</span> {t("sensors.add_sensor")}
                 </h2>
 
                 <form onSubmit={handleSensorSubmit} className="space-y-4">
                   <div>
                     <label htmlFor="sensor-label" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                      Sensor Label
+                      {t("sensors.sensor_label")}
                     </label>
                     <input
                       id="sensor-label"
@@ -341,7 +348,7 @@ export default function SensorsPage() {
 
                   <div>
                     <label htmlFor="sensor-type" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                      Sensor Type
+                      {t("sensors.type")}
                     </label>
                     <select
                       id="sensor-type"
@@ -359,7 +366,7 @@ export default function SensorsPage() {
                     disabled={isAddingSensor}
                     className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer"
                   >
-                    {isAddingSensor ? "Registering..." : "Register Sensor"}
+                    {isAddingSensor ? t("common.loading") : t("sensors.register_node")}
                   </button>
                 </form>
               </div>
@@ -367,7 +374,7 @@ export default function SensorsPage() {
               {/* Sensor Node Registry List */}
               <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
                 <h2 className="text-sm font-bold text-neutral-300 mb-4">
-                  Field Nodes ({sensors.length})
+                  {t("nav.sensors")} ({sensors.length})
                 </h2>
                 
                 {loading ? (
@@ -375,7 +382,7 @@ export default function SensorsPage() {
                     <span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : sensors.length === 0 ? (
-                  <p className="text-xs text-neutral-500 italic">No sensors registered in this field.</p>
+                  <p className="text-xs text-neutral-500 italic">{t("common.no_data")}</p>
                 ) : (
                   <div className="space-y-3 max-h-60 overflow-y-auto">
                     {sensors.map((s) => (
@@ -385,7 +392,7 @@ export default function SensorsPage() {
                           <span className="text-[9px] text-neutral-500 font-mono select-all block mt-0.5">{s.id}</span>
                         </div>
                         <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                          Active
+                          {t("sensors.online")}
                         </span>
                       </div>
                     ))}

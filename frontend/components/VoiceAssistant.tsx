@@ -3,59 +3,57 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSpeech } from "@/hooks/useSpeech";
 import { api } from "@/services/api";
-import { useAuth } from "@/hooks/useAuth";
-import { Mic, X, MessageSquare, Volume2, Globe, Sparkles } from "lucide-react";
+import { useTranslation } from "@/context/LanguageContext";
+import { Locale } from "@/lib/translations";
+import { Mic, X, MessageSquare, Globe, Sparkles, Send } from "lucide-react";
 
-interface VoiceResponse {
-  text_english: string;
-  text_translated: string;
-  audio_base64: string | null;
+interface AssistantResponse {
+  reply: string;
+  intent: string;
   language: string;
+  conversation_id: string;
+  context_used: boolean;
+  audio_base64: string | null;
 }
 
 interface Message {
   sender: "user" | "ai";
   text: string;
   timestamp: Date;
-}
-
-interface VoiceItem {
-  id: string;
-  name: string;
-}
-
-interface VoiceRecommendation {
-  id: string;
-  crop_id: string;
-  is_irrigation_required: boolean;
-  recommended_water_volume_liters: number;
-  status: string;
+  intent?: string;
 }
 
 export const VoiceAssistant: React.FC = () => {
-  const { user } = useAuth();
+  const { locale, setLocale } = useTranslation();
   const { isListening, transcription, startListening, stopListening, speak, cancelSpeech } = useSpeech();
   
   const [isOpen, setIsOpen] = useState(false);
-  const [language, setLanguage] = useState("hi-IN"); // default to Hindi
+  const [language, setLanguage] = useState<string>("en-IN"); 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string>("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Sync preferred language from logged-in user profile
+  // Initialize conversation ID when drawer opens
   useEffect(() => {
-    if (user && ["hi-IN", "kn-IN", "en-IN"].includes(user.preferred_language)) {
-      setLanguage(user.preferred_language);
+    if (isOpen && !conversationId) {
+      setConversationId(`conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
     }
-  }, [user]);
+  }, [isOpen, conversationId]);
+
+  // Sync preferred language from global translation context
+  useEffect(() => {
+    if (locale) {
+      setLanguage(locale);
+    }
+  }, [locale]);
 
   // Listen to global open event
   useEffect(() => {
     const handleOpen = () => {
       setIsOpen(true);
-      setError(null);
     };
     window.addEventListener("open-voice-assistant", handleOpen);
     return () => window.removeEventListener("open-voice-assistant", handleOpen);
@@ -64,7 +62,7 @@ export const VoiceAssistant: React.FC = () => {
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isListening, transcription]);
+  }, [messages, isListening, transcription, isLoading]);
 
   const handleClose = () => {
     cancelSpeech();
@@ -72,97 +70,77 @@ export const VoiceAssistant: React.FC = () => {
     setIsOpen(false);
   };
 
+  const handleSendText = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const query = inputText.trim();
+    if (!query || isLoading) return;
+
+    setInputText("");
+    await processUserMessage(query);
+  };
+
   const toggleListening = () => {
     if (isListening) {
       stopListening();
     } else {
-      setError(null);
       cancelSpeech();
       startListening(language, async (resultText) => {
-        // 1. Add user message
-        const userMsg: Message = { sender: "user", text: resultText, timestamp: new Date() };
-        setMessages((prev) => [...prev, userMsg]);
-        
-        // 2. Fetch AI translation response
-        await fetchAIResponse(resultText);
+        if (resultText.trim()) {
+          await processUserMessage(resultText.trim());
+        }
       });
     }
   };
 
-  const fetchAIResponse = async (queryText: string) => {
+  const processUserMessage = async (queryText: string) => {
+    // 1. Add user message to UI state
+    const userMsg: Message = { sender: "user", text: queryText, timestamp: new Date() };
+    setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
+
     try {
-      // Find the last recommendation or query backend
-      // We'll fetch recommendations list first to obtain a crop recommendation context
-      const farms = await api.get<VoiceItem[]>("/farms");
-      if (farms.length === 0) {
-        const fallbackMsg = "No farms registered yet. Please add a farm first.";
-        addAIMessage(fallbackMsg);
-        speak(fallbackMsg, language);
-        setIsLoading(false);
-        return;
+      // 2. Send structured request to Context-Aware Assistant Endpoint
+      const response = await api.post<AssistantResponse>("/voice-assistant", {
+        message: queryText,
+        language: language,
+        conversation_id: conversationId || undefined
+      });
+
+      if (response.conversation_id && !conversationId) {
+        setConversationId(response.conversation_id);
       }
 
-      const fields = await api.get<VoiceItem[]>(`/fields?farm_id=${farms[0].id}`);
-      if (fields.length === 0) {
-        const fallbackMsg = "No fields added. Please create fields under your farm.";
-        addAIMessage(fallbackMsg);
-        speak(fallbackMsg, language);
-        setIsLoading(false);
-        return;
-      }
+      // 3. Add AI message to UI state
+      const aiMsg: Message = { 
+        sender: "ai", 
+        text: response.reply, 
+        timestamp: new Date(),
+        intent: response.intent
+      };
+      setMessages((prev) => [...prev, aiMsg]);
 
-      const crops = await api.get<VoiceItem[]>(`/crops?field_id=${fields[0].id}`);
-      if (crops.length === 0) {
-        const fallbackMsg = "No crops planted. Please register a crop under your field.";
-        addAIMessage(fallbackMsg);
-        speak(fallbackMsg, language);
-        setIsLoading(false);
-        return;
-      }
-
-      const recs = await api.get<VoiceRecommendation[]>(`/recommendations?crop_id=${crops[0].id}`);
-      if (recs.length === 0) {
-        const fallbackMsg = "No recommendations computed. Simulate telemetry data first.";
-        addAIMessage(fallbackMsg);
-        speak(fallbackMsg, language);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch the voice response from backend for the recommendation
-      const voiceRes = await api.get<VoiceResponse>(
-        `/recommendations/${recs[0].id}/audio?target_lang=${language}`
-      );
-
-      // Perform a simple intent parser locally to speak specific segments
-      const cleanQuery = queryText.toLowerCase();
-      let replyText = voiceRes.text_translated;
-
-      if (cleanQuery.includes("water") || cleanQuery.includes("quantity") || cleanQuery.includes("पानी") || cleanQuery.includes("ನೀರು")) {
-        replyText = language === "hi-IN" 
-          ? `सिफारिश किया गया पानी: ${recs[0].recommended_water_volume_liters} लीटर।` 
-          : language === "kn-IN" 
-            ? `ಶಿಫಾರಸು ಮಾಡಿದ ನೀರಿನ ಪ್ರಮಾಣ: ${recs[0].recommended_water_volume_liters} ಲೀಟರ್.` 
-            : `Recommended water volume is ${recs[0].recommended_water_volume_liters} Liters.`;
-      }
-
-      addAIMessage(replyText);
-      speak(replyText, language, voiceRes.audio_base64);
+      // 4. Speak response (using Sarvam audio_base64 if available or browser TTS)
+      speak(response.reply, language, response.audio_base64);
 
     } catch (err) {
-      console.error(err);
-      const errMsg = "Apologies, could not process voice request at this moment.";
-      addAIMessage(errMsg);
-      speak(errMsg, language);
+      console.error("Voice Assistant Request Failed:", err);
+      
+      // Farmer-friendly localized error handling
+      let fallbackText = "I'm having trouble connecting right now. Please try again.";
+      if (language === "hi-IN") {
+        fallbackText = "मुझे कनेक्ट करने में समस्या हो रही है। कृपया पुनः प्रयास करें।";
+      } else if (language === "te-IN") {
+        fallbackText = "నాకు ప్రస్తుతం కనెక్ట్ చేయడంలో విఫలమైంది. దయచేసి మళ్ళీ ప్రయత్నించండి.";
+      } else if (language === "kn-IN") {
+        fallbackText = "ಸಂಪರ್ಕಿಸುವಲ್ಲಿ ತೊಂದರೆಯಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.";
+      }
+
+      const errorMsg: Message = { sender: "ai", text: fallbackText, timestamp: new Date() };
+      setMessages((prev) => [...prev, errorMsg]);
+      speak(fallbackText, language);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const addAIMessage = (text: string) => {
-    const aiMsg: Message = { sender: "ai", text, timestamp: new Date() };
-    setMessages((prev) => [...prev, aiMsg]);
   };
 
   if (!isOpen) return null;
@@ -182,8 +160,8 @@ export const VoiceAssistant: React.FC = () => {
               <Sparkles className="w-4 h-4" />
             </span>
             <div>
-              <h3 className="font-extrabold text-sm text-white">AgriSmart Voice Assistant</h3>
-              <p className="text-[10px] text-neutral-400">Ask questions in your regional language</p>
+              <h3 className="font-extrabold text-sm text-white">AgriSmart Voice & Chat Assistant</h3>
+              <p className="text-[10px] text-neutral-400">Context-Aware Agricultural Assistant</p>
             </div>
           </div>
           <button 
@@ -195,12 +173,12 @@ export const VoiceAssistant: React.FC = () => {
         </div>
 
         {/* Conversation Area */}
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-[250px] no-scrollbar py-2">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-[250px] max-h-[400px] no-scrollbar py-2">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center text-xs text-neutral-500 space-y-2">
               <MessageSquare className="w-10 h-10 text-neutral-800 stroke-[1.5]" />
-              <p>Hello! Tap the microphone below and ask me:<br/>
-                <span className="text-neutral-400 font-semibold mt-1 block">&quot;Should I water my crops today?&quot;</span>
+              <p>Hello! Ask me a question about your farm:<br/>
+                <span className="text-neutral-400 font-semibold mt-1 block">&quot;How is my tomato field?&quot; or &quot;When should I irrigate?&quot;</span>
               </p>
             </div>
           )}
@@ -217,12 +195,19 @@ export const VoiceAssistant: React.FC = () => {
                     : "bg-neutral-900 text-neutral-200 border border-neutral-850"
                 }`}
               >
-                <p>{msg.text}</p>
-                <span className={`text-[8px] mt-1 block text-right ${
-                  msg.sender === "user" ? "text-neutral-800" : "text-neutral-500"
-                }`}>
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                <p className="whitespace-pre-wrap">{msg.text}</p>
+                <div className="flex items-center justify-end gap-1.5 mt-1">
+                  {msg.intent && msg.sender === "ai" && (
+                    <span className="text-[7px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-neutral-800 text-emerald-400">
+                      {msg.intent}
+                    </span>
+                  )}
+                  <span className={`text-[8px] block ${
+                    msg.sender === "user" ? "text-neutral-800" : "text-neutral-500"
+                  }`}>
+                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
               </div>
             </div>
           ))}
@@ -236,12 +221,12 @@ export const VoiceAssistant: React.FC = () => {
             </div>
           )}
 
-          {/* Loading Spinner Bubble */}
+          {/* Loading / Thinking State Bubble */}
           {isLoading && (
-            <div className="flex justify-start">
+            <div className="flex justify-start animate-fade-in">
               <div className="bg-neutral-900 border border-neutral-850 rounded-2xl px-4 py-3 flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs text-neutral-400">Processing audio response...</span>
+                <span className="text-xs text-neutral-400 font-medium">Thinking...</span>
               </div>
             </div>
           )}
@@ -249,59 +234,73 @@ export const VoiceAssistant: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Audio / Mic Wave Controls */}
-        <div className="border-t border-neutral-900 pt-4 mt-4 space-y-4">
+        {/* Audio / Text Input Bar & Controls */}
+        <div className="border-t border-neutral-900 pt-4 mt-2 space-y-3">
           
-          {/* Controls Bar */}
-          <div className="flex justify-between items-center gap-4 bg-neutral-950 p-2.5 rounded-xl border border-neutral-900">
+          {/* Text Input Form */}
+          <form onSubmit={handleSendText} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Ask a question..."
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim() || isLoading}
+              className="p-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:hover:bg-emerald-500 text-neutral-950 rounded-xl transition-all cursor-pointer font-bold"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+
+          {/* Language & Voice Controls Bar */}
+          <div className="flex justify-between items-center gap-4 bg-neutral-950 p-2 rounded-xl border border-neutral-900">
             {/* Language Selector */}
             <div className="flex items-center gap-2 text-xs">
               <Globe className="w-3.5 h-3.5 text-neutral-400" />
               <select
                 value={language}
-                onChange={(e) => setLanguage(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setLanguage(val);
+                  setLocale(val as Locale);
+                }}
                 className="bg-transparent text-neutral-350 border-none outline-none font-bold cursor-pointer"
               >
+                <option value="en-IN" className="bg-neutral-950 text-white">English (India)</option>
                 <option value="hi-IN" className="bg-neutral-950 text-white">हिन्दी (Hindi)</option>
+                <option value="te-IN" className="bg-neutral-950 text-white">తెలుగు (Telugu)</option>
                 <option value="kn-IN" className="bg-neutral-950 text-white">ಕನ್ನಡ (Kannada)</option>
-                <option value="en-IN" className="bg-neutral-950 text-white">English (US)</option>
+                <option value="ta-IN" className="bg-neutral-950 text-white">தமிழ் (Tamil)</option>
+                <option value="mr-IN" className="bg-neutral-950 text-white">मराठी (Marathi)</option>
+                <option value="bn-IN" className="bg-neutral-950 text-white">বাংলা (Bengali)</option>
+                <option value="ml-IN" className="bg-neutral-950 text-white">മലയാളം (Malayalam)</option>
+                <option value="gu-IN" className="bg-neutral-950 text-white">ગુજરાતી (Gujarati)</option>
+                <option value="pa-IN" className="bg-neutral-950 text-white">ਪੰਜਾਬੀ (Punjabi)</option>
+                <option value="or-IN" className="bg-neutral-950 text-white">ଓଡ଼ିଆ (Odia)</option>
+                <option value="as-IN" className="bg-neutral-950 text-white">অসমীয়া (Assamese)</option>
+                <option value="ur-IN" className="bg-neutral-950 text-white">اردو (Urdu)</option>
               </select>
             </div>
-            <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">
-              {isListening ? "Listening" : "Ready"}
-            </div>
-          </div>
-
-          {/* Listening Pulsing Wave */}
-          {isListening && (
-            <div className="flex justify-center items-center gap-1.5 h-8">
-              {[0.4, 0.8, 0.5, 0.9, 0.3, 0.7, 0.4].map((delay, i) => (
-                <span 
-                  key={i}
-                  className="w-1 bg-emerald-500 rounded-full animate-wave"
-                  style={{ 
-                    animationDelay: `${delay}s`,
-                    height: '100%' 
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Central Mic Button */}
-          <div className="flex justify-center">
+            
+            {/* Central Mic Button */}
             <button
+              type="button"
               onClick={toggleListening}
-              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl cursor-pointer transition-all duration-300 ${
+              className={`p-2.5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                 isListening 
-                  ? "bg-rose-500 text-white animate-pulse-glow" 
-                  : "bg-emerald-500 text-neutral-950 hover:scale-105"
+                  ? "bg-rose-500 text-white animate-pulse" 
+                  : "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
               }`}
-              aria-label={isListening ? "Stop listening" : "Start voice assistant microphone"}
+              title={isListening ? "Stop listening" : "Speak your question"}
             >
-              <Mic className="w-7 h-7 stroke-[2.5]" />
+              <Mic className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
+
         </div>
 
       </div>

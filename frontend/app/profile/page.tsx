@@ -1,9 +1,12 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
+import { Locale } from "@/lib/translations";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/api";
+import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { 
   User, 
   Mail, 
@@ -17,7 +20,9 @@ import {
 } from "lucide-react";
 
 export default function ProfilePage() {
+  const { t, setLocale } = useTranslation();
   const { user, loading: authLoading, refreshProfile } = useAuth();
+  const { isOnline } = useOfflineCache();
   const router = useRouter();
 
   // Form State
@@ -62,8 +67,11 @@ export default function ProfilePage() {
     setIsSubmitting(true);
 
     try {
+      if (formData.preferred_language) {
+        setLocale(formData.preferred_language as Locale);
+      }
       await api.put("/users/profile", formData);
-      setSuccess("Profile settings updated successfully!");
+      setSuccess(t("profile.profile_updated") || "Profile updated successfully!");
       await refreshProfile();
     } catch (err) {
       setError((err as Error).message || "Failed to update profile settings");
@@ -78,14 +86,22 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
       <div className="max-w-xl mx-auto space-y-6">
         
+        {/* Offline Alert Banner */}
+        {!isOnline && (
+          <div className="bg-amber-600 text-neutral-950 font-bold text-center py-2.5 px-4 rounded-2xl text-xs flex justify-center items-center gap-1.5 shadow-md">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{t("common.offline_banner")}</span>
+          </div>
+        )}
+        
         {/* Header */}
         <div className="border-b border-neutral-900 pb-6">
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
             <User className="w-8 h-8 text-emerald-500" />
-            Farmer Profile
+            {t("profile.title")}
           </h1>
           <p className="text-neutral-450 text-xs mt-1 font-semibold">
-            Edit contact information, language, and regional preferences
+            {t("profile.subtitle")}
           </p>
         </div>
 
@@ -109,7 +125,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="prof-email" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5" />
-                Email Address (Registered)
+                {t("profile.email")}
               </label>
               <input
                 id="prof-email"
@@ -124,7 +140,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="prof-fullname" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                 <User className="w-3.5 h-3.5" />
-                Full Name
+                {t("profile.full_name")}
               </label>
               <input
                 id="prof-fullname"
@@ -142,7 +158,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="prof-phone" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                 <Phone className="w-3.5 h-3.5" />
-                Phone Number
+                {t("profile.phone_number")}
               </label>
               <input
                 id="prof-phone"
@@ -160,7 +176,7 @@ export default function ProfilePage() {
             <div>
               <label htmlFor="prof-lang" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5" />
-                Preferred Voice Assistant Language
+                {t("profile.preferred_lang")}
               </label>
               <select
                 id="prof-lang"
@@ -170,8 +186,18 @@ export default function ProfilePage() {
                 className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-350 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 font-bold"
               >
                 <option value="en-IN">English (India)</option>
-                <option value="hi-IN">Hindi (हिन्दी)</option>
-                <option value="kn-IN">Kannada (ಕನ್ನಡ)</option>
+                <option value="hi-IN">हिन्दी (Hindi)</option>
+                <option value="te-IN">తెలుగు (Telugu)</option>
+                <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
+                <option value="ta-IN">தமிழ் (Tamil)</option>
+                <option value="ml-IN">മലയാളം (Malayalam)</option>
+                <option value="mr-IN">मराठी (Marathi)</option>
+                <option value="bn-IN">বাংলা (Bengali)</option>
+                <option value="gu-IN">ગુજરાતી (Gujarati)</option>
+                <option value="pa-IN">ਪੰਜਾਬੀ (Punjabi)</option>
+                <option value="or-IN">ଓଡ଼ିଆ (Odia)</option>
+                <option value="as-IN">অসমীয়া (Assamese)</option>
+                <option value="ur-IN">اردو (Urdu)</option>
               </select>
             </div>
 
@@ -179,7 +205,7 @@ export default function ProfilePage() {
               <div>
                 <label htmlFor="prof-state" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5" />
-                  State
+                  {t("profile.state")}
                 </label>
                 <input
                   id="prof-state"
@@ -197,7 +223,7 @@ export default function ProfilePage() {
               <div>
                 <label htmlFor="prof-district" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5" />
-                  District
+                  {t("profile.district")}
                 </label>
                 <input
                   id="prof-district"
@@ -234,10 +260,10 @@ export default function ProfilePage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition-all duration-200 mt-6 cursor-pointer shadow-lg active:scale-98"
+              disabled={isSubmitting || !isOnline}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition-all duration-200 mt-6 cursor-pointer shadow-lg active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Saving..." : "Save Settings"}
+              {isSubmitting ? "Saving..." : (!isOnline ? "Offline Mode (Cannot Update)" : "Save Settings")}
             </button>
           </form>
         </div>

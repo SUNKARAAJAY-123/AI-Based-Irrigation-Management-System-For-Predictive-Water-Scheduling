@@ -1,18 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  preload: false,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  preload: false,
-});
 
 export const viewport: Viewport = {
   themeColor: "#2e7d32",
@@ -22,19 +11,26 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "AI-Based Irrigation Management System",
+  title: "AI Irrigation Management System",
   description: "Predictive water scheduling and crop optimization system using AI, weather telemetry, and regional voice controls.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "AI Irrigation",
+    statusBarStyle: "black-translucent",
+    title: "Kisan AI",
   },
+  icons: {
+    apple: "/icons/icon-192x192.png",
+  }
 };
 
 import Navbar from "@/components/Navbar";
+import Header from "@/components/Header";
 import VoiceAssistant from "@/components/VoiceAssistant";
+import InstallPrompt from "@/components/InstallPrompt";
+import NetworkStatus from "@/components/NetworkStatus";
 import { AuthProvider } from "@/hooks/useAuth";
+import { LanguageProvider } from "@/context/LanguageContext";
 
 export default function RootLayout({
   children,
@@ -44,28 +40,39 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <div className="flex flex-col md:flex-row min-h-screen bg-neutral-950 text-neutral-100">
-            <Navbar />
-            <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-              {children}
-            </main>
-            <VoiceAssistant />
-          </div>
+          <LanguageProvider>
+            <div className="flex flex-col md:flex-row min-h-screen bg-neutral-950 text-neutral-100 pb-[env(safe-area-inset-bottom)]">
+              <Navbar />
+              <main className="flex-1 flex flex-col min-h-screen overflow-y-auto pb-16 md:pb-0">
+                <NetworkStatus />
+                <Header />
+                <div className="flex-1">
+                  {children}
+                </div>
+              </main>
+              <VoiceAssistant />
+              <InstallPrompt />
+            </div>
+          </LanguageProvider>
         </AuthProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator && window.location.hostname !== 'localhost') {
+              if ('serviceWorker' in navigator) {
+                // Register listener for real-time messages from SW
+                navigator.serviceWorker.addEventListener('message', function(event) {
+                  if (event.data && event.data.type === 'notification-received') {
+                    window.dispatchEvent(new CustomEvent('notification-received', { detail: event.data.payload }));
+                  }
+                });
+
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').then(
-                    function(registration) {
-                      console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    },
-                    function(err) {
-                      console.log('ServiceWorker registration failed: ', err);
+                    function(reg) {
+                      console.log('ServiceWorker registered:', reg.scope);
                     }
                   );
                 });

@@ -1,10 +1,10 @@
 import os
 import sys
-from sqlalchemy.orm import Session
 
 # Add project root to python path to resolve database and backend modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from sqlalchemy.orm import Session
 from database.database import SessionLocal
 from database.models import User
 from backend.auth.jwt import hash_password

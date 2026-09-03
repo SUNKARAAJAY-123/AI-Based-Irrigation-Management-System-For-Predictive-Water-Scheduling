@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
 # ------------------------------------------------------------------------------
@@ -396,5 +396,48 @@ class AdminRequestApproval(BaseModel):
 
 class AdminRequestRejection(BaseModel):
     rejection_reason: Optional[str] = None
+
+
+# ------------------------------------------------------------------------------
+# Farmer AI Feedback Schemas (TC136)
+# ------------------------------------------------------------------------------
+class FarmerFeedbackCreate(BaseModel):
+    recommendation_id: str
+    followed_status: Literal["Followed", "Partially Followed", "Not Followed"]
+    reason: Optional[str] = Field(None, max_length=255)
+    explanation: Optional[str] = Field(None, max_length=1000)
+
+class FarmerFeedbackResponse(BaseModel):
+    id: str
+    user_id: str
+    recommendation_id: str
+    followed_status: str
+    reason: Optional[str] = None
+    explanation: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ------------------------------------------------------------------------------
+# Conversational Assistant Schemas
+# ------------------------------------------------------------------------------
+class AssistantChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+    language: Optional[str] = "en-IN"
+    conversation_id: Optional[str] = None
+    farm_id: Optional[str] = None
+    field_id: Optional[str] = None
+    crop_id: Optional[str] = None
+
+class AssistantChatResponse(BaseModel):
+    reply: str
+    intent: str
+    language: str
+    conversation_id: str
+    context_used: bool = True
+    audio_base64: Optional[str] = None
+    farm_info: Optional[Dict[str, Any]] = None
 
 

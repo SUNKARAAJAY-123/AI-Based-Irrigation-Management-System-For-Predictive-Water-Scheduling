@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,7 @@ interface Farm {
 }
 
 export default function FarmsPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -153,10 +155,10 @@ export default function FarmsPage() {
         <div className="border-b border-neutral-900 pb-6">
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
             <Sprout className="w-8 h-8 text-emerald-500" />
-            Manage Lands
+            {t("farms.title")}
           </h1>
           <p className="text-neutral-450 text-xs mt-1 font-semibold">
-            Register, configure, and monitor your agricultural plots
+            {t("farms.subtitle")}
           </p>
         </div>
 
@@ -180,13 +182,13 @@ export default function FarmsPage() {
           <div className="glass-panel rounded-3xl p-6 shadow-xl border border-neutral-900">
             <h2 className="text-base font-bold mb-4 flex items-center gap-2 border-b border-neutral-900 pb-3">
               <PlusCircle className="w-5 h-5 text-emerald-400" />
-              Register New Farm
+              {t("farms.add_farm")}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="farm-name" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
-                  Farm Name
+                  {t("farms.farm_name")}
                 </label>
                 <input
                   id="farm-name"
@@ -203,7 +205,7 @@ export default function FarmsPage() {
 
               <div>
                 <label htmlFor="farm-area" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
-                  Land Area (Hectares)
+                  {t("farms.land_area")}
                 </label>
                 <input
                   id="farm-area"
@@ -221,7 +223,7 @@ export default function FarmsPage() {
 
               <div>
                 <label htmlFor="farm-soil" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5">
-                  Soil Classification
+                  {t("farms.soil_classification")}
                 </label>
                 <select
                   id="farm-soil"
@@ -230,10 +232,10 @@ export default function FarmsPage() {
                   onChange={handleInputChange}
                   className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-350 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 font-bold"
                 >
-                  <option value="loam">Loam (Optimal)</option>
-                  <option value="clay">Clay (High Retention)</option>
-                  <option value="sandy">Sandy (Low Retention)</option>
-                  <option value="silt">Silt</option>
+                  <option value="loam">{t("farms.loam")}</option>
+                  <option value="clay">{t("farms.clay")}</option>
+                  <option value="sandy">{t("farms.sandy")}</option>
+                  <option value="silt">{t("farms.silt")}</option>
                 </select>
               </div>
 
@@ -241,7 +243,7 @@ export default function FarmsPage() {
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center">
                   <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest">
-                    Coordinates GPS
+                    {t("farms.coordinates")}
                   </span>
                   <button
                     type="button"
@@ -250,7 +252,7 @@ export default function FarmsPage() {
                     className="text-[10px] font-extrabold text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1"
                   >
                     <Navigation className={`w-3.5 h-3.5 ${isDetectingLocation ? "animate-spin" : ""}`} />
-                    {isDetectingLocation ? "Locating..." : "Auto Detect"}
+                    {isDetectingLocation ? t("common.loading") : t("farms.auto_detect")}
                   </button>
                 </div>
                 
@@ -263,8 +265,8 @@ export default function FarmsPage() {
                     name="location_latitude"
                     value={formData.location_latitude}
                     onChange={handleInputChange}
-                    placeholder="Latitude"
-                    aria-label="Farm Latitude"
+                    placeholder={t("farms.latitude")}
+                    aria-label={t("farms.latitude")}
                     autoComplete="off"
                     className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                   />
@@ -276,8 +278,8 @@ export default function FarmsPage() {
                     name="location_longitude"
                     value={formData.location_longitude}
                     onChange={handleInputChange}
-                    placeholder="Longitude"
-                    aria-label="Farm Longitude"
+                    placeholder={t("farms.longitude")}
+                    aria-label={t("farms.longitude")}
                     autoComplete="off"
                     className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-600"
                   />
@@ -289,7 +291,7 @@ export default function FarmsPage() {
                 disabled={isSubmitting}
                 className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer shadow-lg active:scale-98"
               >
-                {isSubmitting ? "Adding Plot..." : "Register Plot"}
+                {isSubmitting ? t("common.loading") : t("farms.register_plot")}
               </button>
             </form>
           </div>
@@ -298,7 +300,7 @@ export default function FarmsPage() {
           <div className="lg:col-span-2 space-y-4">
             <h2 className="text-base font-bold flex items-center gap-2 border-b border-neutral-900 pb-3">
               <Layers className="w-5 h-5 text-emerald-400" />
-              Registered Fields ({farms.length})
+              {t("farms.registered_farms")} ({farms.length})
             </h2>
 
             {loading ? (
@@ -307,7 +309,7 @@ export default function FarmsPage() {
               </div>
             ) : farms.length === 0 ? (
               <div className="bg-neutral-950/40 border border-neutral-900 rounded-3xl p-12 text-center text-neutral-500 text-xs font-semibold">
-                No lands registered yet. Use the registration form to list your first plot.
+                {t("farms.no_farms")}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -320,13 +322,13 @@ export default function FarmsPage() {
                       <div className="flex justify-between items-start border-b border-neutral-900 pb-3 mb-3">
                         <div>
                           <h3 className="font-extrabold text-white text-base truncate">{f.name}</h3>
-                          <span className="text-[10px] text-neutral-500 capitalize">Soil: {f.soil_type || "Loam"}</span>
+                          <span className="text-[10px] text-neutral-500 capitalize">{t("fields.soil_type")}: {f.soil_type || "Loam"}</span>
                         </div>
                         
                         <button
                           onClick={() => handleDelete(f.id)}
                           className="p-1.5 hover:bg-rose-500/10 text-neutral-500 hover:text-rose-450 rounded-xl transition-colors cursor-pointer"
-                          title="Delete Farm Plot"
+                          title={t("farms.delete_farm")}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -334,11 +336,11 @@ export default function FarmsPage() {
                       
                       <div className="space-y-2 text-xs bg-neutral-950/40 border border-neutral-900/60 p-3 rounded-2xl">
                         <div className="flex justify-between">
-                          <span className="text-neutral-500">Area Size:</span>
+                          <span className="text-neutral-500">{t("farms.area_size")}:</span>
                           <span className="font-bold text-white">{f.area_hectares} ha</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-neutral-500">Coordinates:</span>
+                          <span className="text-neutral-500">{t("farms.coordinates")}:</span>
                           <a 
                             href={`https://www.google.com/maps/search/?api=1&query=${f.location_latitude},${f.location_longitude}`}
                             target="_blank"

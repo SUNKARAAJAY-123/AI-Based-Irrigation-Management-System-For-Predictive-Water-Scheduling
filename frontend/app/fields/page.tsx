@@ -1,10 +1,13 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/services/api";
+import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { ChevronRight, AlertTriangle } from "lucide-react";
 
 interface Farm {
   id: string;
@@ -31,8 +34,10 @@ interface Crop {
 }
 
 export default function FieldsPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { isOnline, saveToCache, loadFromCache } = useOfflineCache();
 
   // State
   const [farms, setFarms] = useState<Farm[]>([]);
@@ -42,6 +47,7 @@ export default function FieldsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null);
 
   // Field Form State
   const [fieldForm, setFieldForm] = useState({
@@ -73,37 +79,99 @@ export default function FieldsPage() {
     }
   }, [user]);
 
+  // Re-fetch when connection returns
+  useEffect(() => {
+    if (user) {
+      loadFarms();
+    }
+  }, [isOnline]);
+
   const loadFarms = async () => {
     try {
-      const fetchedFarms = await api.get<Farm[]>("/farms");
-      setFarms(fetchedFarms);
-      if (fetchedFarms.length > 0) {
-        setSelectedFarm(fetchedFarms[0]);
-        fetchFields(fetchedFarms[0].id);
+      if (isOnline) {
+        const fetchedFarms = await api.get<Farm[]>("/farms");
+        setFarms(fetchedFarms);
+        saveToCache("farmer_farms", fetchedFarms);
+        if (fetchedFarms.length > 0) {
+          setSelectedFarm(fetchedFarms[0]);
+          fetchFields(fetchedFarms[0].id);
+        } else {
+          setLoading(false);
+        }
       } else {
-        setLoading(false);
+        const cachedFarms = loadFromCache<Farm[]>("farmer_farms");
+        if (cachedFarms.data) {
+          setFarms(cachedFarms.data);
+          if (cachedFarms.data.length > 0) {
+            setSelectedFarm(cachedFarms.data[0]);
+            fetchFields(cachedFarms.data[0].id);
+          } else {
+            setLoading(false);
+          }
+        } else {
+          setError("You are offline and no cached farms are available.");
+          setLoading(false);
+        }
       }
     } catch (err) {
-      setError((err as Error).message || "Failed to load farms");
-      setLoading(false);
+      // Offline fallback on failure
+      const cachedFarms = loadFromCache<Farm[]>("farmer_farms");
+      if (cachedFarms.data) {
+        setFarms(cachedFarms.data);
+        if (cachedFarms.data.length > 0) {
+          setSelectedFarm(cachedFarms.data[0]);
+          fetchFields(cachedFarms.data[0].id);
+        } else {
+          setLoading(false);
+        }
+      } else {
+        setError((err as Error).message || "Failed to load farms");
+        setLoading(false);
+      }
     }
   };
 
   const fetchFields = async (farmId: string) => {
     setLoading(true);
     try {
-      const fetchedFields = await api.get<Field[]>(`/fields?farm_id=${farmId}`);
-      setFields(fetchedFields);
-      
-      // Load crops for each field
-      const cropsMap: { [fieldId: string]: Crop[] } = {};
-      for (const field of fetchedFields) {
-        const crops = await api.get<Crop[]>(`/crops?field_id=${field.id}`);
-        cropsMap[field.id] = crops;
+      if (isOnline) {
+        const fetchedFields = await api.get<Field[]>(`/fields?farm_id=${farmId}`);
+        setFields(fetchedFields);
+        saveToCache(`farmer_fields_${farmId}`, fetchedFields);
+        
+        // Load crops for each field
+        const cropsMap: { [fieldId: string]: Crop[] } = {};
+        for (const field of fetchedFields) {
+          const crops = await api.get<Crop[]>(`/crops?field_id=${field.id}`);
+          cropsMap[field.id] = crops;
+        }
+        setFieldCrops(cropsMap);
+        saveToCache(`farmer_field_crops_${farmId}`, cropsMap);
+        setCacheTimestamp(null);
+      } else {
+        const cachedFields = loadFromCache<Field[]>(`farmer_fields_${farmId}`);
+        const cachedCrops = loadFromCache<{ [fieldId: string]: Crop[] }>(`farmer_field_crops_${farmId}`);
+        
+        if (cachedFields.data) {
+          setFields(cachedFields.data);
+          setFieldCrops(cachedCrops.data || {});
+          const time = cachedFields.timestamp ? new Date(cachedFields.timestamp) : new Date();
+          setCacheTimestamp(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        } else {
+          setError("You are offline and no cached fields are available.");
+        }
       }
-      setFieldCrops(cropsMap);
     } catch (err) {
-      setError((err as Error).message || "Failed to fetch fields");
+      const cachedFields = loadFromCache<Field[]>(`farmer_fields_${farmId}`);
+      const cachedCrops = loadFromCache<{ [fieldId: string]: Crop[] }>(`farmer_field_crops_${farmId}`);
+      if (cachedFields.data) {
+        setFields(cachedFields.data);
+        setFieldCrops(cachedCrops.data || {});
+        const time = cachedFields.timestamp ? new Date(cachedFields.timestamp) : new Date();
+        setCacheTimestamp(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } else {
+        setError((err as Error).message || "Failed to fetch fields");
+      }
     } finally {
       setLoading(false);
     }
@@ -191,19 +259,27 @@ export default function FieldsPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
       <div className="max-w-6xl mx-auto space-y-8">
+
+        {/* Offline Alert Banner */}
+        {!isOnline && (
+          <div className="bg-amber-600 text-neutral-950 font-bold text-center py-2.5 px-4 rounded-2xl text-xs flex justify-center items-center gap-1.5 shadow-md">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>You are offline. Showing last synchronized information. {cacheTimestamp && `(Last synced: ${cacheTimestamp})`}</span>
+          </div>
+        )}
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">Fields & Crops</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">{t("fields.title")}</h1>
             <p className="text-neutral-400 text-sm mt-1">
-              Configure fields and register active crops
+              {t("fields.subtitle")}
             </p>
           </div>
 
           {farms.length > 0 && (
             <div>
-              <label htmlFor="active-farm-select" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">Active Farm</label>
+              <label htmlFor="active-farm-select" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">{t("fields.active_farm")}</label>
               <select
                 id="active-farm-select"
                 value={selectedFarm?.id || ""}
@@ -232,12 +308,12 @@ export default function FieldsPage() {
 
         {farms.length === 0 ? (
           <div className="bg-neutral-900/40 border border-neutral-800 rounded-3xl p-12 text-center max-w-xl mx-auto shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">No Farms Found</h2>
+            <h2 className="text-lg font-bold text-white mb-2">{t("fields.no_farms_found")}</h2>
             <p className="text-xs text-neutral-400 mb-6">
-              You must register a farm before you can add fields or plant crops.
+              {t("farms.no_farms")}
             </p>
             <Link href="/farms" className="bg-emerald-500 text-neutral-950 font-bold text-xs px-5 py-3 rounded-xl">
-              Register a Farm
+              {t("fields.register_farm_link")}
             </Link>
           </div>
         ) : (
@@ -246,13 +322,13 @@ export default function FieldsPage() {
             {/* Add Field Panel */}
             <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md h-fit">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <span>➕</span> Add New Field
+                <span>➕</span> {t("fields.add_field")}
               </h2>
 
               <form onSubmit={handleFieldSubmit} className="space-y-4">
                 <div>
                   <label htmlFor="field-name" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                    Field Name
+                    {t("fields.field_name")}
                   </label>
                   <input
                     id="field-name"
@@ -268,7 +344,7 @@ export default function FieldsPage() {
 
                 <div>
                   <label htmlFor="field-area" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                    Land Area (Hectares)
+                    {t("fields.area")}
                   </label>
                   <input
                     id="field-area"
@@ -285,7 +361,7 @@ export default function FieldsPage() {
 
                 <div>
                   <label htmlFor="field-soil" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                    Soil Texture
+                    {t("fields.soil_type")}
                   </label>
                   <select
                     id="field-soil"
@@ -293,10 +369,10 @@ export default function FieldsPage() {
                     onChange={(e) => setFieldForm(prev => ({ ...prev, soil_type: e.target.value }))}
                     className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
                   >
-                    <option value="loam">Loam</option>
-                    <option value="clay">Clay</option>
-                    <option value="sandy">Sandy</option>
-                    <option value="silt">Silt</option>
+                    <option value="loam">{t("farms.loam")}</option>
+                    <option value="clay">{t("farms.clay")}</option>
+                    <option value="sandy">{t("farms.sandy")}</option>
+                    <option value="silt">{t("farms.silt")}</option>
                   </select>
                 </div>
 
@@ -305,7 +381,7 @@ export default function FieldsPage() {
                   disabled={isAddingField}
                   className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer"
                 >
-                  {isAddingField ? "Adding..." : "Add Field"}
+                  {isAddingField ? t("common.loading") : t("fields.add_field")}
                 </button>
               </form>
             </div>
@@ -313,7 +389,7 @@ export default function FieldsPage() {
             {/* Field & Crops List */}
             <div className="lg:col-span-2 space-y-4">
               <h2 className="text-lg font-bold flex items-center gap-2">
-                <span>🌱</span> Registered Fields ({fields.length})
+                <span>🌱</span> {t("nav.fields")} ({fields.length})
               </h2>
 
               {loading ? (
@@ -322,7 +398,7 @@ export default function FieldsPage() {
                 </div>
               ) : fields.length === 0 ? (
                 <div className="bg-neutral-900/20 border border-neutral-800/80 rounded-3xl p-12 text-center text-neutral-500 text-xs">
-                  No fields added to this farm. Configure a field on the left.
+                  {t("common.no_data")}
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -336,9 +412,12 @@ export default function FieldsPage() {
                         {/* Field Header */}
                         <div className="flex justify-between items-start border-b border-neutral-800/80 pb-4 mb-4">
                           <div>
-                            <h3 className="font-extrabold text-white text-base">{field.name}</h3>
+                            <Link href={`/fields/${field.id}`} className="hover:text-emerald-400 transition-colors group flex items-center gap-1">
+                              <h3 className="font-extrabold text-white group-hover:text-emerald-400 text-base">{field.name}</h3>
+                              <ChevronRight className="w-4 h-4 text-neutral-500 group-hover:text-emerald-400 transition-colors" />
+                            </Link>
                             <span className="text-[10px] text-neutral-400 capitalize">
-                              Soil: {field.soil_type || "Loam"} • Area: {field.area_hectares} ha
+                              {t("fields.soil_type")}: {field.soil_type || "Loam"} • {t("farms.area_size")}: {field.area_hectares} ha
                             </span>
                           </div>
                           
@@ -350,12 +429,12 @@ export default function FieldsPage() {
                               }}
                               className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-bold cursor-pointer"
                             >
-                              Plant Crop
+                              {t("fields.plant_crop")}
                             </button>
                             <button
                               onClick={() => handleDeleteField(field.id)}
                               className="text-neutral-500 hover:text-rose-400 text-sm cursor-pointer"
-                              title="Delete Field"
+                              title={t("fields.delete_field")}
                             >
                               🗑️
                             </button>
@@ -365,10 +444,10 @@ export default function FieldsPage() {
                         {/* Plant Crop Inline Form */}
                         {activeCropFormId === field.id && (
                           <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-2xl p-4 mb-4">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-3">Plant New Crop</h4>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-3">{t("fields.plant_crop")}</h4>
                             <form onSubmit={handleCropSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                               <div>
-                                <label htmlFor={"crop-type-" + field.id} className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Crop Type</label>
+                                <label htmlFor={"crop-type-" + field.id} className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">{t("fields.crop_name")}</label>
                                 <select
                                   id={"crop-type-" + field.id}
                                   value={cropForm.name}
@@ -384,7 +463,7 @@ export default function FieldsPage() {
                               </div>
 
                               <div>
-                                <label htmlFor={"crop-variety-" + field.id} className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Variety (Optional)</label>
+                                <label htmlFor={"crop-variety-" + field.id} className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">{t("fields.variety")}</label>
                                 <input
                                   id={"crop-variety-" + field.id}
                                   type="text"
@@ -401,7 +480,7 @@ export default function FieldsPage() {
                                 disabled={isAddingCrop}
                                 className="bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs p-2 rounded-lg transition-all duration-200 cursor-pointer"
                               >
-                                {isAddingCrop ? "Planting..." : "Plant Crop"}
+                                {isAddingCrop ? t("common.loading") : t("fields.add_crop")}
                               </button>
                             </form>
                           </div>
@@ -409,9 +488,9 @@ export default function FieldsPage() {
 
                         {/* Crop List in Field */}
                         <div className="space-y-3">
-                          <span className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider block">Active Crops ({crops.length})</span>
+                          <span className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider block">{t("fields.registered_crops")} ({crops.length})</span>
                           {crops.length === 0 ? (
-                            <p className="text-xs text-neutral-500 italic">No crops currently planted in this field.</p>
+                            <p className="text-xs text-neutral-500 italic">{t("common.no_data")}</p>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {crops.map((c) => (
@@ -422,7 +501,7 @@ export default function FieldsPage() {
                                   <div>
                                     <h4 className="font-extrabold text-white text-sm">{c.name}</h4>
                                     <span className="text-[10px] text-neutral-400">{c.variety || "Local Variety"}</span>
-                                    <p className="text-[9px] text-neutral-500 mt-1">Planted: {new Date(c.planted_at).toLocaleDateString("en-IN")}</p>
+                                    <p className="text-[9px] text-neutral-500 mt-1">{t("fields.planted_at")}: {new Date(c.planted_at).toLocaleDateString("en-IN")}</p>
                                   </div>
                                   
                                   <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase">

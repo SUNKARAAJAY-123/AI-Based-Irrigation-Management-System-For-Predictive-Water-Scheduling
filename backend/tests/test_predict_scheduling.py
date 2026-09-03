@@ -34,7 +34,7 @@ def test_prediction_timing_api():
         "previous_irrigation_mm": 18.0,
         "region": "Andhra Pradesh",
         "ET_index": 4.2,
-        "model": "xgboost"
+        "model": "random_forest"
     }
 
     response = client.post("/api/ml/predict", json=payload)

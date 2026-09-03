@@ -1,6 +1,6 @@
 # AI-Based Irrigation Management System — Training Report
     
-**Generated At:** 2026-08-14 21:44:12
+**Generated At:** 2026-08-27 17:14:28
 
 ## 1. Dataset
 * **Dataset Name:** `irrigation_master_dataset_v1.csv`
@@ -24,17 +24,17 @@
 ## 4. Results
 | Model | R² Score | MAE | RMSE | Training Time | Prediction Time | Model Size |
 |---|---|---|---|---|---|---|
-| Random Forest | 0.9344 | 4.4554 | 7.7746 | 0.71 s | 0.0578 ms | 10458.5 KB |
-| Gradient Boosting | 0.9659 | 3.5304 | 5.6037 | 2.77 s | 0.0038 ms | 424.3 KB |
-| XGBoost | 0.9612 | 3.5971 | 5.9816 | 0.34 s | 0.0086 ms | 277.6 KB |
-| LSTM | -0.0001 | 23.2749 | 31.3291 | 6.39 s | 0.4623 ms | 319.4 KB |
+| Random Forest | 0.9344 | 4.4554 | 7.7746 | 0.93 s | 0.1002 ms | 10458.5 KB |
+| Gradient Boosting | 0.9659 | 3.5304 | 5.6037 | 5.31 s | 0.0152 ms | 424.3 KB |
+| XGBoost | 0.9612 | 3.5971 | 5.9816 | 0.67 s | 0.0104 ms | 277.6 KB |
+| LSTM | -0.0000 | 23.2807 | 31.3277 | 13.51 s | 0.8999 ms | 319.4 KB |
 
 ## 5. LSTM
 * **Status:** Success
-* **R²:** -0.0001
-* **MAE:** 23.2749
-* **RMSE:** 31.3291
-* **Training Time:** 6.39 s
+* **R²:** -0.0000
+* **MAE:** 23.2807
+* **RMSE:** 31.3277
+* **Training Time:** 13.51 s
 * **Model Size:** 319.4 KB
 * **Explanation:** LSTM trained successfully with sequential sequence windowing.
 

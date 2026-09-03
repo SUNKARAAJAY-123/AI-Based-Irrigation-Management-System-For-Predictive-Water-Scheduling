@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/context/LanguageContext";
 
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/services/api";
@@ -111,6 +112,7 @@ interface TrainingStatus {
 }
 
 export default function MLPredictionPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role?.toLowerCase() === "admin" || user?.role?.toLowerCase() === "super_admin";
 
@@ -121,9 +123,7 @@ export default function MLPredictionPage() {
     soil_moisture: 35.0,
     crop: "Rice",
     soil_type: "Clay",
-    model: "", // Empty string defaults to production model
-    crop_growth_stage: "Vegetative",
-    previous_irrigation_mm: 10.0
+    model: "" // Empty string defaults to production model
   });
 
   const [loading, setLoading] = useState(false);
@@ -373,10 +373,10 @@ export default function MLPredictionPage() {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
               <Brain className="w-8 h-8 text-emerald-500" />
-              AgriSmart ML Command Center
+              {t("ml_predict.title")}
             </h1>
             <p className="text-neutral-450 text-xs mt-1 font-semibold">
-              Train, benchmark, and compare predictive regression networks to optimize crop water efficiency
+              {t("ml_predict.subtitle")}
             </p>
           </div>
           
@@ -384,12 +384,12 @@ export default function MLPredictionPage() {
             {comparisonData?.production_model && (
               <div className="bg-emerald-500/10 text-emerald-400 text-[10px] font-black px-3 py-1.5 rounded-full border border-emerald-500/20 tracking-wider uppercase flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5" />
-                Active Production: {comparisonData.production_model.replace("_", " ").toUpperCase()}
+                {t("ml_predict.best_model")}: {comparisonData.production_model.replace("_", " ").toUpperCase()}
               </div>
             )}
             {!isAdmin && (
               <div className="bg-neutral-900 text-neutral-400 text-[10px] font-black px-3 py-1.5 rounded-full border border-neutral-800 uppercase">
-                Farmer Profile Active
+                {t("header.user_role")}
               </div>
             )}
           </div>
@@ -1069,7 +1069,7 @@ export default function MLPredictionPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div>
                 {/* Land Area */}
                 <div>
                   <label htmlFor="land_area_acres" className="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2 flex items-center gap-1">
@@ -1085,42 +1085,6 @@ export default function MLPredictionPage() {
                     required
                     value={landAreaAcres}
                     onChange={(e) => setLandAreaAcres(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
-                    className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3.5 py-3 outline-none focus:border-emerald-500/50 font-bold"
-                  />
-                </div>
-
-                {/* Crop Growth Stage */}
-                <div>
-                  <label htmlFor="crop_growth_stage" className="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">
-                    Growth Stage
-                  </label>
-                  <select
-                    id="crop_growth_stage"
-                    name="crop_growth_stage"
-                    value={formData.crop_growth_stage}
-                    onChange={handleChange}
-                    className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3.5 outline-none focus:border-emerald-500/50 font-bold"
-                  >
-                    {["Sowing", "Vegetative", "Flowering", "Harvest"].map(stage => (
-                      <option key={stage} value={stage}>{stage}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Previous Irrigation (mm) */}
-                <div>
-                  <label htmlFor="previous_irrigation_mm" className="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">
-                    Prev Irrigation (mm)
-                  </label>
-                  <input
-                    id="previous_irrigation_mm"
-                    type="number"
-                    step="0.1"
-                    min="0.0"
-                    name="previous_irrigation_mm"
-                    required
-                    value={formData.previous_irrigation_mm}
-                    onChange={handleChange}
                     className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3.5 py-3 outline-none focus:border-emerald-500/50 font-bold"
                   />
                 </div>
@@ -1194,7 +1158,7 @@ export default function MLPredictionPage() {
                   <div className="grid grid-cols-2 gap-4 bg-neutral-950/60 p-4 rounded-2xl border border-neutral-900/40">
                     <div className="space-y-0.5">
                       <span className="text-[9px] uppercase font-bold text-neutral-500 block">Crop Type</span>
-                      <span className="text-xs font-bold text-white">{formData.crop} ({formData.crop_growth_stage})</span>
+                      <span className="text-xs font-bold text-white">{formData.crop}</span>
                     </div>
                     <div className="space-y-0.5">
                       <span className="text-[9px] uppercase font-bold text-neutral-500 block">Land Area</span>

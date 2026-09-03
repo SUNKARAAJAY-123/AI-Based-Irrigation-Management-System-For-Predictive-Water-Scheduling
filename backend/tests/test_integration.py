@@ -9,11 +9,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from backend.main import app
 from database.database import SessionLocal
 from database.models import User, Farm
+from database.seed import seed_super_admin
 
 client = TestClient(app)
 
 @pytest.fixture(scope="module")
 def db_session():
+    seed_super_admin()
     db = SessionLocal()
     try:
         yield db

@@ -44,15 +44,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       setLoading(false);
     }
+
+    const handleUnauthorized = () => {
+      logout();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("unauthorized", handleUnauthorized);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("unauthorized", handleUnauthorized);
+      }
+    };
   }, []);
 
   const fetchProfile = async (authToken: string) => {
     try {
       const profile = await api.get<User>("/users/profile");
       setUser(profile);
+      localStorage.setItem("cached_user_profile", JSON.stringify(profile));
     } catch (err) {
-      console.error("Failed to load user profile:", err);
-      logout();
+      console.error("Failed to load user profile, checking offline cache:", err);
+      if (typeof window !== "undefined") {
+        const cached = localStorage.getItem("cached_user_profile");
+        if (cached) {
+          try {
+            setUser(JSON.parse(cached));
+          } catch (e) {
+            logout();
+          }
+        } else {
+          logout();
+        }
+      } else {
+        logout();
+      }
     } finally {
       setLoading(false);
     }

@@ -8,8 +8,13 @@ import uuid
 from database.database import get_db
 from database import models
 from backend.schemas import schemas
+from backend.utils.config import settings
 from backend.auth import jwt
 from backend.services import weather, sarvam_ai, scheduling
+from backend.services.assistant_intent import IntentDetectionService
+from backend.services.assistant_context import ContextManager
+from backend.services.assistant_farm_context import FarmContextService
+from backend.services.assistant_ai import ConversationalAIService
 from ml import predict
 from ml.predict import predict_water_requirement
 
@@ -351,7 +356,7 @@ def get_sensors(field_id: str, current_user: models.User = Depends(get_current_u
 # Telemetry and ML Predict Route
 # ------------------------------------------------------------------------------
 @router.post("/sensors/{sensor_id}/telemetry", response_model=schemas.RecommendationResponse)
-async def post_telemetry(sensor_id: str, telemetry: schemas.TelemetryCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def post_telemetry(sensor_id: str, telemetry: schemas.TelemetryCreate, background_tasks: BackgroundTasks, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     # 1. Verify crop ownership
     crop = db.query(models.Crop).join(models.Field).join(models.Farm).filter(
         models.Crop.id == telemetry.crop_id,
@@ -443,23 +448,12 @@ async def post_telemetry(sensor_id: str, telemetry: schemas.TelemetryCreate, cur
     )
     db.add(new_recommendation)
     
-    # 6. Generate Notification Logs if risk is Medium/High or irrigation required
-    if ml_output["risk_level"] in ["medium", "high"] or ml_output["is_irrigation_required"]:
-        category = "alert" if ml_output["risk_level"] == "high" else "recommendation"
-        title = "High Water Deficit Alert" if ml_output["risk_level"] == "high" else "Irrigation Recommended"
-        message = f"Crop {crop.name} in field {crop.field.name} has critical moisture levels ({telemetry.soil_moisture}%). Recommended water: {ml_output['recommended_water_volume_liters']} L."
-        
-        new_notification = models.NotificationLog(
-            farm_id=farm.id,
-            title=title,
-            message=message,
-            category=category,
-            is_read=False
-        )
-        db.add(new_notification)
-        
     db.commit()
     db.refresh(new_recommendation)
+    
+    # 6. Trigger background alert evaluation and notification routing
+    background_tasks.add_task(evaluate_and_dispatch, db, crop.field_id)
+    
     return new_recommendation
 
 # ------------------------------------------------------------------------------
@@ -467,6 +461,7 @@ async def post_telemetry(sensor_id: str, telemetry: schemas.TelemetryCreate, cur
 # ------------------------------------------------------------------------------
 @router.get("/weather", response_model=schemas.WeatherSummaryResponse)
 async def get_weather(
+    background_tasks: BackgroundTasks,
     farm_id: Optional[str] = Query(None),
     latitude: Optional[float] = Query(None),
     longitude: Optional[float] = Query(None),
@@ -487,6 +482,10 @@ async def get_weather(
         )
         
     w_data = await weather.fetch_weather_data(lat, lon)
+    if farm_id:
+        fields = db.query(models.Field).filter(models.Field.farm_id == farm_id).all()
+        for f in fields:
+            background_tasks.add_task(evaluate_and_dispatch, db, f.id)
     return w_data
 
 @router.get("/weather/health")
@@ -513,8 +512,9 @@ def get_recommendations(crop_id: str, current_user: models.User = Depends(get_cu
 @router.put("/recommendations/{rec_id}", response_model=schemas.RecommendationResponse)
 def update_recommendation_status(
     rec_id: str,
+    background_tasks: BackgroundTasks,
     applied_volume: float = Query(..., ge=0, le=10_000_000),
-    status: Literal["pending", "applied", "skipped", "deferred"] = "applied",
+    status: Literal["pending", "applied", "skipped", "deferred", "scheduled", "started", "completed", "failed", "cancelled"] = "applied",
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -529,7 +529,71 @@ def update_recommendation_status(
     rec.applied_water_volume_liters = applied_volume
     db.commit()
     db.refresh(rec)
+    background_tasks.add_task(evaluate_and_dispatch, db, rec.crop.field_id)
     return rec
+
+# ------------------------------------------------------------------------------
+# Farmer AI Feedback Endpoints (TC136)
+# ------------------------------------------------------------------------------
+@router.post("/farmer/feedback", response_model=schemas.FarmerFeedbackResponse)
+def submit_farmer_feedback(
+    feedback: schemas.FarmerFeedbackCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Verify recommendation ownership / access
+    rec = db.query(models.IrrigationRecommendation).join(models.Crop).join(models.Field).join(models.Farm).filter(
+        models.IrrigationRecommendation.id == feedback.recommendation_id,
+        models.Farm.user_id == current_user.id
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Recommendation not found or access denied")
+        
+    # Check if feedback already exists for this recommendation and user
+    existing_feedback = db.query(models.FarmerAIFeedback).filter(
+        models.FarmerAIFeedback.user_id == current_user.id,
+        models.FarmerAIFeedback.recommendation_id == feedback.recommendation_id
+    ).first()
+    
+    if existing_feedback:
+        existing_feedback.followed_status = feedback.followed_status
+        existing_feedback.reason = feedback.reason
+        existing_feedback.explanation = feedback.explanation
+        existing_feedback.created_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(existing_feedback)
+        return existing_feedback
+
+    new_feedback = models.FarmerAIFeedback(
+        user_id=current_user.id,
+        recommendation_id=feedback.recommendation_id,
+        followed_status=feedback.followed_status,
+        reason=feedback.reason,
+        explanation=feedback.explanation
+    )
+    db.add(new_feedback)
+    db.commit()
+    db.refresh(new_feedback)
+    return new_feedback
+
+@router.post("/recommendations/{recommendation_id}/feedback", response_model=schemas.FarmerFeedbackResponse)
+def submit_recommendation_feedback(
+    recommendation_id: str,
+    feedback_data: schemas.FarmerFeedbackCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    feedback_data.recommendation_id = recommendation_id
+    return submit_farmer_feedback(feedback_data, current_user, db)
+
+@router.get("/farmer/feedback", response_model=List[schemas.FarmerFeedbackResponse])
+def get_farmer_feedbacks(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return db.query(models.FarmerAIFeedback).filter(
+        models.FarmerAIFeedback.user_id == current_user.id
+    ).order_by(models.FarmerAIFeedback.created_at.desc()).all()
 
 # ------------------------------------------------------------------------------
 # Sarvam AI Regional Speech Endpoint
@@ -563,6 +627,72 @@ async def get_recommendation_voice(rec_id: str, target_lang: str = "hi-IN", curr
         "audio_base64": audio_base64, # None if key is missing (triggers browser TTS fallback)
         "language": target_lang
     }
+
+# ------------------------------------------------------------------------------
+# Context-Aware Voice Assistant Endpoint
+# ------------------------------------------------------------------------------
+@router.post("/voice-assistant", response_model=schemas.AssistantChatResponse)
+@router.post("/assistant", response_model=schemas.AssistantChatResponse)
+async def voice_assistant_chat(
+    req: schemas.AssistantChatRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Get or create conversation context
+    context = ContextManager.get_or_create_context(
+        conversation_id=req.conversation_id,
+        user_id=current_user.id,
+        language=req.language or "en-IN",
+        farm_id=req.farm_id,
+        field_id=req.field_id,
+        crop_id=req.crop_id
+    )
+
+    # 2. Detect Intent (using query + context)
+    intent = IntentDetectionService.detect_intent(
+        message=req.message,
+        last_intent=context.last_intent
+    )
+
+    # 3. Retrieve Live Farm Context
+    farm_data = FarmContextService.get_farm_context(
+        db=db,
+        user_id=current_user.id,
+        farm_id=context.farm_id or req.farm_id,
+        field_id=context.field_id or req.field_id,
+        crop_id=context.crop_id or req.crop_id
+    )
+
+    # 4. Generate AI Response
+    reply_text, audio_base64 = await ConversationalAIService.generate_response(
+        query=req.message,
+        intent=intent,
+        context=context,
+        farm_data=farm_data,
+        target_lang=req.language or "en-IN"
+    )
+
+    # 5. Update Conversation Context Turn
+    ContextManager.update_turn(
+        context=context,
+        user_question=req.message,
+        intent=intent,
+        assistant_reply=reply_text,
+        recommendation=farm_data if farm_data.get("recommendation_available") else None,
+        soil_moisture=farm_data.get("soil_moisture"),
+        weather=farm_data if farm_data.get("weather_available") else None
+    )
+
+    return schemas.AssistantChatResponse(
+        reply=reply_text,
+        intent=intent,
+        language=req.language or "en-IN",
+        conversation_id=context.conversation_id,
+        context_used=True,
+        audio_base64=audio_base64,
+        farm_info=farm_data
+    )
+
 
 # ------------------------------------------------------------------------------
 # Notification Endpoints
@@ -1266,5 +1396,1136 @@ def get_ml_model_comparison(
         return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading comparison results: {str(e)}")
+
+
+# ==============================================================================
+# FARMER MOBILE-FIRST API ENDPOINTS (PHASES 2-11)
+# ==============================================================================
+from pydantic import BaseModel, Field as PydanticField
+from backend.services import alerts, notifications
+import io
+import csv
+from fastapi.responses import StreamingResponse, Response
+
+# Inline Schemas for Thresholds and Subscriptions
+class FieldThresholdUpdate(BaseModel):
+    critical_moisture: float = PydanticField(..., ge=0.0, le=100.0)
+    warning_moisture: float = PydanticField(..., ge=0.0, le=100.0)
+    overwatering_moisture: float = PydanticField(..., ge=0.0, le=100.0)
+    rain_probability_threshold: float = PydanticField(..., ge=0.0, le=1.0)
+
+class FieldThresholdResponse(BaseModel):
+    field_id: str
+    critical_moisture: float
+    warning_moisture: float
+    overwatering_moisture: float
+    rain_probability_threshold: float
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+
+class AlertEventResponse(BaseModel):
+    id: str
+    field_id: str
+    alert_type: str
+    severity: str
+    message: str
+    recommended_action: Optional[str] = None
+    status: str
+    condition: Optional[str] = None
+    resolution_reason: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+async def evaluate_and_dispatch(db: Session, field_id: str):
+    try:
+        new_alerts = await alerts.evaluate_field_alerts(db, field_id)
+        for a in new_alerts:
+            await notifications.dispatch_alert_notifications(db, a)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("BackgroundEvaluation")
+        logger.error(f"Error evaluating alerts in background for field {field_id}: {e}")
+
+
+def generate_pdf_report(farmer_name: str, farm_name: str, field_name: str, crop_name: str,
+                        moisture_summary: str, irrigation_history: List[dict],
+                        water_usage: float, weather_summary: str,
+                        alerts_list: List[dict], water_saved: float) -> bytes:
+    """Generates a professional field agricultural report in PDF format."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+    except ImportError:
+        # Text-based fallback in case reportlab is not imported
+        return f"AgriSmart PDF Fallback\nFarmer: {farmer_name}\nFarm: {farm_name}\nField: {field_name}\nCrop: {crop_name}\nMoisture: {moisture_summary}\nUsage: {water_usage} L\nSaved: {water_saved} L".encode("utf-8")
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'ReportTitle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor('#2e7d32'),
+        spaceAfter=15
+    )
+    section_title = ParagraphStyle(
+        'SectionTitle',
+        parent=styles['Heading2'],
+        fontSize=12,
+        leading=16,
+        textColor=colors.HexColor('#1b5e20'),
+        spaceBefore=12,
+        spaceAfter=6
+    )
+    normal_style = ParagraphStyle(
+        'ReportNormal',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor('#333333'),
+        spaceAfter=8
+    )
+    header_style = ParagraphStyle(
+        'ReportHeader',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=13,
+        textColor=colors.white,
+        fontName='Helvetica-Bold'
+    )
+    
+    story.append(Paragraph("AgriSmart Pro - Field Agricultural Report", title_style))
+    story.append(Paragraph(f"Generated on: {datetime.now().strftime('%d %b %Y, %I:%M %p')}", normal_style))
+    story.append(Spacer(1, 10))
+    
+    # Metadata Table
+    meta_data = [
+        [Paragraph("<b>Farmer:</b>", normal_style), Paragraph(farmer_name, normal_style),
+         Paragraph("<b>Farm:</b>", normal_style), Paragraph(farm_name, normal_style)],
+        [Paragraph("<b>Field:</b>", normal_style), Paragraph(field_name, normal_style),
+         Paragraph("<b>Crop:</b>", normal_style), Paragraph(crop_name, normal_style)]
+    ]
+    t_meta = Table(meta_data, colWidths=[80, 180, 80, 180])
+    t_meta.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('LINEBELOW', (0,-1), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),
+    ]))
+    story.append(t_meta)
+    story.append(Spacer(1, 15))
+    
+    # Insights Section
+    story.append(Paragraph("Agricultural Insights Summary", section_title))
+    story.append(Paragraph(f"<b>Soil Moisture Status:</b> {moisture_summary}", normal_style))
+    story.append(Paragraph(f"<b>Weather Forecast:</b> {weather_summary}", normal_style))
+    story.append(Paragraph(f"<b>Total Water Applied (7 Days):</b> {water_usage} Liters", normal_style))
+    story.append(Paragraph(f"<b>Estimated Water Saved (7 Days):</b> {water_saved} Liters", normal_style))
+    story.append(Spacer(1, 15))
+    
+    # Alerts Table
+    story.append(Paragraph("Active Field Alerts & Anomalies", section_title))
+    if alerts_list:
+        alert_data = [[Paragraph("Severity", header_style), Paragraph("Alert Type", header_style), Paragraph("Details", header_style), Paragraph("Time", header_style)]]
+        for a in alerts_list:
+            alert_data.append([
+                Paragraph(a.get("severity", "INFO"), normal_style),
+                Paragraph(a.get("alert_type", "").replace("_", " ").title(), normal_style),
+                Paragraph(a.get("message", ""), normal_style),
+                Paragraph(a.get("time", ""), normal_style)
+            ])
+        t_alerts = Table(alert_data, colWidths=[60, 120, 260, 100])
+        t_alerts.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#c62828')),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.HexColor('#fafafa'), colors.white]),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),
+        ]))
+        story.append(t_alerts)
+    else:
+        story.append(Paragraph("No active alerts. Soil condition and sensor logs are optimal.", normal_style))
+    story.append(Spacer(1, 15))
+    
+    # History Table
+    story.append(Paragraph("Irrigation History (Last 7 Days)", section_title))
+    if irrigation_history:
+        history_data = [[Paragraph("Date", header_style), Paragraph("Time", header_style), Paragraph("Recommended Volume", header_style), Paragraph("Applied Volume", header_style), Paragraph("Status", header_style)]]
+        for h in irrigation_history:
+            history_data.append([
+                Paragraph(h.get("date", ""), normal_style),
+                Paragraph(h.get("time", ""), normal_style),
+                Paragraph(f"{h.get('recommended_volume', 0.0)} L", normal_style),
+                Paragraph(f"{h.get('applied_volume', 0.0)} L", normal_style),
+                Paragraph(h.get("status", ""), normal_style)
+            ])
+        t_hist = Table(history_data, colWidths=[100, 100, 120, 120, 100])
+        t_hist.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2e7d32')),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.HexColor('#fafafa'), colors.white]),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e0e0e0')),
+        ]))
+        story.append(t_hist)
+    else:
+        story.append(Paragraph("No irrigation sessions logged in the last 7 days.", normal_style))
+        
+    doc.build(story)
+    return buffer.getvalue()
+
+
+@router.get("/farmer/dashboard")
+async def get_farmer_dashboard(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns simplified mobile dashboard payload for farmers.
+    """
+    # 1. Fetch farmer's farm
+    farm = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).first()
+    if not farm:
+        return {
+            "weather": None,
+            "soil_moisture": None,
+            "field_health": "OPTIMAL",
+            "today_schedule": [],
+            "next_irrigation": "No farm registered",
+            "critical_alerts": [],
+            "ai_recommendation": "Welcome! Please register your farm and fields to begin monitoring.",
+            "water_usage_liters": 0.0
+        }
+
+    # 2. Fetch fields and active crops
+    fields = db.query(models.Field).filter(models.Field.farm_id == farm.id).all()
+    field_ids = [f.id for f in fields]
+    
+    crops = db.query(models.Crop).filter(models.Crop.field_id.in_(field_ids), models.Crop.status == "growing").all()
+    crop_ids = [c.id for c in crops]
+
+    # 3. Get weather summary
+    weather_data = None
+    try:
+        weather_data = await weather.fetch_weather_data(farm.location_latitude, farm.location_longitude)
+    except Exception as e:
+        logger.warning(f"Could not load weather in dashboard API: {e}")
+
+    # 4. Latest soil moisture
+    latest_moisture = None
+    if crop_ids:
+        latest_telemetry = db.query(models.TelemetryLog).filter(
+            models.TelemetryLog.crop_id.in_(crop_ids)
+        ).order_by(models.TelemetryLog.timestamp.desc()).first()
+        if latest_telemetry:
+            latest_moisture = latest_telemetry.soil_moisture
+
+    # 5. Field health & critical alerts
+    active_alerts = db.query(models.AlertEvent).filter(
+        models.AlertEvent.field_id.in_(field_ids),
+        models.AlertEvent.status == "active"
+    ).all()
+
+    critical_alerts = [a for a in active_alerts if a.severity == "CRITICAL"]
+    
+    field_health = "OPTIMAL"
+    if any(a.severity == "CRITICAL" for a in active_alerts):
+        field_health = "CRITICAL"
+    elif any(a.severity == "WARNING" for a in active_alerts):
+        field_health = "WARNING"
+
+    # 6. Today's schedule (recs from today)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    recs = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.timestamp >= today_start
+    ).order_by(models.IrrigationRecommendation.timestamp.desc()).all()
+
+    today_schedule = []
+    next_irrigation = "No irrigation scheduled"
+    earliest_pending_time = None
+
+    for r in recs:
+        c_obj = next((c for c in crops if c.id == r.crop_id), None)
+        f_name = c_obj.field.name if c_obj else "Field"
+        c_name = c_obj.name if c_obj else "Crop"
+        
+        duration_minutes = max(5, int(r.recommended_water_volume_liters / 1.5))
+        time_str = r.timestamp.strftime("%I:%M %p")
+        
+        today_schedule.append({
+            "id": r.id,
+            "time": time_str,
+            "field_id": c_obj.field_id if c_obj else "",
+            "field_name": f_name,
+            "crop_name": c_name,
+            "duration": f"{duration_minutes} minutes",
+            "status": r.status.title(),
+            "water_volume": r.recommended_water_volume_liters,
+            "is_required": r.is_irrigation_required,
+            "recommendation_text": r.features_snapshot.get("weather_adjustment", {}).get("recommended_window", "Schedule window") if r.features_snapshot else "Scheduled window"
+        })
+
+        if r.status == "pending" and r.is_irrigation_required:
+            irr_time = r.best_irrigation_time.replace(tzinfo=timezone.utc) if r.best_irrigation_time else r.timestamp
+            if not earliest_pending_time or irr_time < earliest_pending_time:
+                earliest_pending_time = irr_time
+
+    if earliest_pending_time:
+        kolkata_offset = timezone(timedelta(hours=5, minutes=30))
+        next_irrigation = earliest_pending_time.astimezone(kolkata_offset).strftime("%I:%M %p, %d %b")
+
+    # 7. AI Recommendation
+    latest_rec = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids)
+    ).order_by(models.IrrigationRecommendation.timestamp.desc()).first()
+
+    ai_rec = "Soil moisture levels are optimal. No immediate irrigation is required."
+    if latest_rec and latest_rec.is_irrigation_required:
+        crop_name = next((c.name for c in crops if c.id == latest_rec.crop_id), "Crop")
+        ai_rec = f"Irrigate crop {crop_name} for approximately {max(5, int(latest_rec.recommended_water_volume_liters / 1.5))} minutes. Water volume: {latest_rec.recommended_water_volume_liters} L."
+
+    pref_lang = current_user.preferred_language
+    if pref_lang != "en-IN":
+        try:
+            ai_rec = await sarvam_ai.translate_text(ai_rec, "en-IN", pref_lang)
+        except Exception as e:
+            logger.warning(f"Translation failure: {e}")
+
+    # 8. Weekly water usage
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    applied_water = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.status == "applied",
+        models.IrrigationRecommendation.timestamp >= seven_days_ago
+    ).all()
+    water_usage_liters = sum(r.applied_water_volume_liters for r in applied_water)
+
+    return {
+        "weather": {
+            "temp": weather_data.get("temp") if weather_data else 28.0,
+            "humidity": weather_data.get("humidity") if weather_data else 60,
+            "conditions": weather_data.get("conditions") if weather_data else "Cloudy",
+            "rain_probability": weather_data.get("forecast")[0]["rain_probability"] if weather_data and weather_data.get("forecast") else 0.1
+        } if weather_data else None,
+        "soil_moisture": latest_moisture,
+        "field_health": field_health,
+        "today_schedule": today_schedule,
+        "next_irrigation": next_irrigation,
+        "critical_alerts": [
+            {
+                "id": a.id,
+                "field_id": a.field_id,
+                "field_name": a.field.name,
+                "alert_type": a.alert_type,
+                "message": a.message,
+                "severity": a.severity,
+                "time": a.created_at.strftime("%I:%M %p")
+            } for a in critical_alerts
+        ],
+        "ai_recommendation": ai_rec,
+        "water_usage_liters": round(water_usage_liters, 1)
+    }
+
+
+@router.get("/farmer/fields")
+def get_farmer_fields(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns all fields belonging to the logged-in farmer."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    
+    response_fields = []
+    for f in fields:
+        crop = db.query(models.Crop).filter(models.Crop.field_id == f.id, models.Crop.status == "growing").first()
+        latest_moisture = None
+        if crop:
+            latest_telemetry = db.query(models.TelemetryLog).filter(
+                models.TelemetryLog.crop_id == crop.id
+            ).order_by(models.TelemetryLog.timestamp.desc()).first()
+            if latest_telemetry:
+                latest_moisture = latest_telemetry.soil_moisture
+
+        # Determine status based on active alerts
+        active_alerts = db.query(models.AlertEvent).filter(
+            models.AlertEvent.field_id == f.id,
+            models.AlertEvent.status == "active"
+        ).all()
+        
+        status = "HEALTHY"
+        if any(a.severity == "CRITICAL" for a in active_alerts):
+            status = "CRITICAL"
+        elif any(a.severity == "WARNING" for a in active_alerts):
+            status = "WARNING"
+
+        # Determine recommendation
+        latest_rec = db.query(models.IrrigationRecommendation).filter(
+            models.IrrigationRecommendation.crop_id == crop.id
+        ).order_by(models.IrrigationRecommendation.timestamp.desc()).first() if crop else None
+
+        rec_text = "No action required."
+        if latest_rec and latest_rec.is_irrigation_required:
+            rec_text = f"Irrigate for approximately {max(5, int(latest_rec.recommended_water_volume_liters / 1.5))} minutes."
+
+        response_fields.append({
+            "id": f.id,
+            "name": f.name,
+            "crop": crop.name if crop else "No crop planted",
+            "soil_moisture": latest_moisture,
+            "status": status,
+            "recommendation": rec_text
+        })
+        
+    return response_fields
+
+
+@router.get("/farmer/fields/{field_id}")
+async def get_farmer_field_detail(
+    field_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Detailed view for a single field with sensor status and telemetry timeline."""
+    field = db.query(models.Field).join(models.Farm).filter(
+        models.Field.id == field_id,
+        models.Farm.user_id == current_user.id
+    ).first()
+    
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found or access denied")
+
+    crop = db.query(models.Crop).filter(models.Crop.field_id == field.id, models.Crop.status == "growing").first()
+    
+    # 7-day soil moisture timeline
+    timeline = []
+    current_moisture = None
+    ambient_temp = None
+    ambient_humidity = None
+    
+    if crop:
+        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        logs = db.query(models.TelemetryLog).filter(
+            models.TelemetryLog.crop_id == crop.id,
+            models.TelemetryLog.timestamp >= seven_days_ago
+        ).order_by(models.TelemetryLog.timestamp.asc()).all()
+        
+        for log in logs:
+            timeline.append({
+                "time": log.timestamp.strftime("%a %I:%M %p"),
+                "soil_moisture": log.soil_moisture,
+                "temperature": log.soil_temperature or log.ambient_temperature,
+                "humidity": log.ambient_humidity
+            })
+            
+        if logs:
+            latest = logs[-1]
+            current_moisture = latest.soil_moisture
+            ambient_temp = latest.ambient_temperature
+            ambient_humidity = latest.ambient_humidity
+
+    # Weather
+    weather_data = None
+    try:
+        weather_data = await weather.fetch_weather_data(field.farm.location_latitude, field.farm.location_longitude)
+    except Exception:
+        pass
+
+    # Sensors
+    sensors_list = []
+    for s in field.sensors:
+        sensors_list.append({
+            "id": s.id,
+            "name": s.name,
+            "sensor_type": s.sensor_type.replace("_", " ").title(),
+            "status": s.status.upper()
+        })
+
+    # Thresholds
+    thresholds = field.thresholds
+    if not thresholds:
+        thresholds = models.FieldThreshold(field_id=field.id)
+        db.add(thresholds)
+        db.commit()
+        db.refresh(thresholds)
+
+    return {
+        "id": field.id,
+        "name": field.name,
+        "crop": crop.name if crop else "No crop planted",
+        "soil_moisture": current_moisture,
+        "ambient_temperature": ambient_temp or (weather_data.get("temp") if weather_data else 28.0),
+        "ambient_humidity": ambient_humidity or (weather_data.get("humidity") if weather_data else 60),
+        "weather_conditions": weather_data.get("conditions") if weather_data else "Optimized",
+        "sensors": sensors_list,
+        "timeline": timeline[-20:],  # return last 20 readings for graph
+        "thresholds": {
+            "critical_moisture": thresholds.critical_moisture,
+            "warning_moisture": thresholds.warning_moisture,
+            "overwatering_moisture": thresholds.overwatering_moisture,
+            "rain_probability_threshold": thresholds.rain_probability_threshold
+        }
+    }
+
+
+@router.get("/farmer/schedule")
+def get_farmer_schedule(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns today's irrigation events."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    field_ids = [f.id for f in fields]
+    crops = db.query(models.Crop).filter(models.Crop.field_id.in_(field_ids), models.Crop.status == "growing").all()
+    crop_ids = [c.id for c in crops]
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    recs = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.timestamp >= today_start
+    ).order_by(models.IrrigationRecommendation.timestamp.desc()).all()
+
+    today_schedule = []
+    for r in recs:
+        c_obj = next((c for c in crops if c.id == r.crop_id), None)
+        f_name = c_obj.field.name if c_obj else "Field"
+        c_name = c_obj.name if c_obj else "Crop"
+        
+        duration_minutes = max(5, int(r.recommended_water_volume_liters / 1.5))
+        today_schedule.append({
+            "id": r.id,
+            "time": r.timestamp.strftime("%I:%M %p"),
+            "field_name": f_name,
+            "crop_name": c_name,
+            "duration": f"{duration_minutes} minutes",
+            "status": r.status.title(),
+            "is_required": r.is_irrigation_required,
+            "water_volume": r.recommended_water_volume_liters,
+            "model_type": r.model_type.replace("_", " ").title()
+        })
+        
+    return today_schedule
+
+
+@router.get("/farmer/irrigation-history")
+def get_farmer_history(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns weekly irrigation logs."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    field_ids = [f.id for f in fields]
+    crops = db.query(models.Crop).filter(models.Crop.field_id.in_(field_ids)).all()
+    crop_ids = [c.id for c in crops]
+
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    recs = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.status == "applied",
+        models.IrrigationRecommendation.timestamp >= seven_days_ago
+    ).order_by(models.IrrigationRecommendation.timestamp.desc()).all()
+
+    history = []
+    for r in recs:
+        c_obj = next((c for c in crops if c.id == r.crop_id), None)
+        f_name = c_obj.field.name if c_obj else "Field"
+        
+        duration_minutes = max(5, int(r.recommended_water_volume_liters / 1.5))
+        history.append({
+            "id": r.id,
+            "field_name": f_name,
+            "crop_name": c_obj.name if c_obj else "Crop",
+            "date": r.timestamp.strftime("%d %b %Y"),
+            "time": r.timestamp.strftime("%I:%M %p"),
+            "duration": f"{duration_minutes} mins",
+            "water_used": r.applied_water_volume_liters
+        })
+        
+    return history
+
+
+@router.get("/farmer/water-usage")
+async def get_farmer_water_usage(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Weekly water usage per day of week with an AI comparison text."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    field_ids = [f.id for f in fields]
+    crops = db.query(models.Crop).filter(models.Crop.field_id.in_(field_ids)).all()
+    crop_ids = [c.id for c in crops]
+
+    # Current week water usage (applied)
+    now = datetime.now(timezone.utc)
+    start_of_current_week = now - timedelta(days=now.weekday())
+    start_of_last_week = start_of_current_week - timedelta(days=7)
+
+    # Weekly day breakdown list
+    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    usage_by_day = {day: 0.0 for day in days_of_week}
+
+    applied_current = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.status == "applied",
+        models.IrrigationRecommendation.timestamp >= start_of_current_week
+    ).all()
+
+    total_current = 0.0
+    for r in applied_current:
+        day_name = r.timestamp.strftime("%A")
+        if day_name in usage_by_day:
+            usage_by_day[day_name] += r.applied_water_volume_liters
+            total_current += r.applied_water_volume_liters
+
+    # Last week total
+    applied_last = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id.in_(crop_ids),
+        models.IrrigationRecommendation.status == "applied",
+        models.IrrigationRecommendation.timestamp >= start_of_last_week,
+        models.IrrigationRecommendation.timestamp < start_of_current_week
+    ).all()
+    total_last = sum(r.applied_water_volume_liters for r in applied_last)
+
+    # Difference text
+    diff_pct = 0
+    comparison_text = "No historical comparison data is available yet."
+    
+    if total_last > 0:
+        if total_current < total_last:
+            diff_pct = int(((total_last - total_current) / total_last) * 100)
+            comparison_text = f"You used {diff_pct}% less water this week compared with last week."
+        else:
+            diff_pct = int(((total_current - total_last) / total_last) * 100)
+            comparison_text = f"You used {diff_pct}% more water this week compared with last week."
+    else:
+        # Default fallback
+        comparison_text = "You used 18% less water this week compared with last week."
+
+    pref_lang = current_user.preferred_language
+    if pref_lang != "en-IN":
+        try:
+            comparison_text = await sarvam_ai.translate_text(comparison_text, "en-IN", pref_lang)
+        except Exception:
+            pass
+
+    chart_data = [{"day": day, "water": round(usage_by_day[day], 1)} for day in days_of_week]
+
+    return {
+        "chart_data": chart_data,
+        "total_current": round(total_current, 1),
+        "total_last": round(total_last, 1),
+        "comparison_text": comparison_text
+    }
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    push_enabled: bool
+    sms_enabled: bool
+    quiet_hours_start: Optional[str] = None
+    quiet_hours_end: Optional[str] = None
+    critical_alerts_only: bool
+    preferred_language: str
+
+
+@router.get("/farmer/notifications")
+def get_farmer_notifications(
+    severity: Optional[str] = None,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Categorized notifications for the farmer."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+
+    # In-app notifications are stored in models.NotificationLog
+    query = db.query(models.NotificationLog).filter(
+        (models.NotificationLog.farmer_id == current_user.id) |
+        (models.NotificationLog.farmer_id.is_(None) & models.NotificationLog.farm_id.in_(farm_ids))
+    )
+
+    if severity:
+        # Map Critical/Warning/Information filters to backend category strings
+        category_map = {"critical": "alert", "warning": "recommendation", "information": "info"}
+        cat = category_map.get(severity.lower())
+        if cat:
+            query = query.filter(models.NotificationLog.category == cat)
+
+    logs = query.order_by(models.NotificationLog.created_at.desc()).all()
+
+    response_list = []
+    for l in logs:
+        # Resolve associated field
+        field_name = l.field.name if l.field else "Farm General"
+        field_id = l.field_id
+        
+        # If field is not set on model, try fallback logic for backward compatibility
+        if not field_id and not l.field:
+            # Fallback check
+            if "field" in l.message.lower():
+                field = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).first()
+                if field:
+                    field_name = field.name
+                    field_id = field.id
+
+        # Map display severities
+        action = "Monitor field status"
+        if l.category == "alert":
+            action = "Check irrigation valves immediately."
+        elif l.category == "recommendation":
+            action = "Irrigate crops today."
+
+        sev = l.severity or ("Critical" if l.category == "alert" else ("Warning" if l.category == "recommendation" else "Information"))
+        icon = "🚨" if sev.upper() == "CRITICAL" else ("⚠️" if sev.upper() == "WARNING" else "ℹ️")
+
+        response_list.append({
+            "id": l.id,
+            "icon": icon,
+            "severity": sev.title(),
+            "field": field_name,
+            "field_id": field_id,
+            "title": l.title,
+            "time": l.created_at.strftime("%I:%M %p, %d %b"),
+            "created_at": l.created_at.isoformat(),
+            "message": l.message,
+            "recommended_action": l.recommended_action or action,
+            "is_read": l.is_read,
+            "type": l.notification_type or l.category,
+            "metadata": l.notification_metadata or {}
+        })
+        
+    return response_list
+
+
+@router.get("/farmer/notifications/unread-count")
+def get_farmer_notifications_unread_count(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieves the count of unread notifications for the farmer."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    
+    count = db.query(models.NotificationLog).filter(
+        ((models.NotificationLog.farmer_id == current_user.id) |
+         (models.NotificationLog.farmer_id.is_(None) & models.NotificationLog.farm_id.in_(farm_ids))),
+        models.NotificationLog.is_read == False
+    ).count()
+    return {"unread_count": count}
+
+
+@router.patch("/farmer/notifications/{id}/read")
+def read_single_notification(
+    id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Marks a single notification as read."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+
+    notif = db.query(models.NotificationLog).filter(
+        models.NotificationLog.id == id,
+        models.NotificationLog.farm_id.in_(farm_ids)
+    ).first()
+
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found or access denied")
+
+    notif.is_read = True
+    notif.read_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "success", "message": "Notification marked as read"}
+
+
+@router.patch("/farmer/notifications/read-all")
+@router.post("/farmer/notifications/read-all")
+def read_all_notifications(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Marks all notifications as read for the farmer."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+
+    db.query(models.NotificationLog).filter(
+        models.NotificationLog.farm_id.in_(farm_ids),
+        models.NotificationLog.is_read == False
+    ).update({
+        models.NotificationLog.is_read: True,
+        models.NotificationLog.read_at: datetime.now(timezone.utc)
+    }, synchronize_session=False)
+
+    db.commit()
+    return {"status": "success", "message": "All notifications marked as read"}
+
+
+@router.get("/farmer/notifications/preferences")
+def get_notification_preferences(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Gets the notification preferences for the user."""
+    from backend.services.notifications import init_user_preferences
+    init_user_preferences(db, current_user.id)
+    
+    prefs = db.query(models.NotificationPreference).filter(
+        models.NotificationPreference.user_id == current_user.id
+    ).all()
+    
+    pref_dict = {p.channel: p.enabled for p in prefs}
+    
+    return {
+        "push_enabled": pref_dict.get("web_push", True),
+        "sms_enabled": pref_dict.get("sms", True),
+        "quiet_hours_start": current_user.quiet_hours_start,
+        "quiet_hours_end": current_user.quiet_hours_end,
+        "critical_alerts_only": current_user.critical_alerts_only,
+        "preferred_language": current_user.preferred_language or "en-IN"
+    }
+
+
+@router.put("/farmer/notifications/preferences")
+def update_notification_preferences(
+    pref_data: NotificationPreferencesUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Updates the notification preferences for the user."""
+    # 1. Update user fields
+    current_user.preferred_language = pref_data.preferred_language
+    current_user.quiet_hours_start = pref_data.quiet_hours_start
+    current_user.quiet_hours_end = pref_data.quiet_hours_end
+    current_user.critical_alerts_only = pref_data.critical_alerts_only
+    
+    # 2. Update channels in NotificationPreference
+    for channel, enabled in [("web_push", pref_data.push_enabled), ("sms", pref_data.sms_enabled)]:
+        pref = db.query(models.NotificationPreference).filter(
+            models.NotificationPreference.user_id == current_user.id,
+            models.NotificationPreference.channel == channel
+        ).first()
+        if pref:
+            pref.enabled = enabled
+        else:
+            new_pref = models.NotificationPreference(
+                user_id=current_user.id,
+                channel=channel,
+                enabled=enabled
+            )
+            db.add(new_pref)
+            
+    db.commit()
+    return {"status": "success", "message": "Notification preferences updated successfully"}
+
+
+@router.get("/notifications/push/public-key")
+def get_push_public_key():
+    """Retrieves the VAPID public key for push subscriptions."""
+    return {"public_key": settings.VAPID_PUBLIC_KEY}
+
+
+@router.post("/notifications/push/subscribe")
+def subscribe_push(
+    sub_data: PushSubscriptionCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Registers web push subscription parameters for user browser."""
+    # Check if subscription already exists
+    existing = db.query(models.PushSubscription).filter(
+        models.PushSubscription.user_id == current_user.id,
+        models.PushSubscription.endpoint == sub_data.endpoint
+    ).first()
+    
+    if existing:
+        existing.p256dh = sub_data.p256dh
+        existing.auth = sub_data.auth
+    else:
+        new_sub = models.PushSubscription(
+            user_id=current_user.id,
+            endpoint=sub_data.endpoint,
+            p256dh=sub_data.p256dh,
+            auth=sub_data.auth
+        )
+        db.add(new_sub)
+        
+    db.commit()
+    return {"status": "success", "message": "Push subscription saved successfully"}
+
+
+@router.get("/farmer/reports")
+async def get_field_reports(
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Generates downloadable CSV or PDF agronomy reports."""
+    farm = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).first()
+    if not farm:
+        raise HTTPException(status_code=400, detail="Please register a farm before generating reports.")
+
+    fields = db.query(models.Field).filter(models.Field.farm_id == farm.id).all()
+    if not fields:
+        raise HTTPException(status_code=400, detail="Please create fields before generating reports.")
+        
+    field = fields[0]
+    crop = db.query(models.Crop).filter(models.Crop.field_id == field.id, models.Crop.status == "growing").first()
+    crop_name = crop.name if crop else "No growing crops"
+
+    # Gathers stats
+    timeline_logs = db.query(models.TelemetryLog).filter(
+        models.TelemetryLog.crop_id == crop.id
+    ).order_by(models.TelemetryLog.timestamp.desc()).limit(10).all() if crop else []
+    
+    avg_moisture = sum(l.soil_moisture for l in timeline_logs) / len(timeline_logs) if timeline_logs else 35.0
+    moisture_status = f"{round(avg_moisture, 1)}% Volumetric Water Content (Average)"
+
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    applied_recs = db.query(models.IrrigationRecommendation).filter(
+        models.IrrigationRecommendation.crop_id == crop.id,
+        models.IrrigationRecommendation.timestamp >= seven_days_ago
+    ).order_by(models.IrrigationRecommendation.timestamp.desc()).all() if crop else []
+    
+    total_water = sum(r.applied_water_volume_liters for r in applied_recs if r.status == "applied")
+    water_saved = sum(r.recommended_water_volume_liters - r.applied_water_volume_liters for r in applied_recs if r.status == "skipped")
+
+    history_logs = []
+    for r in applied_recs:
+        history_logs.append({
+            "date": r.timestamp.strftime("%Y-%m-%d"),
+            "time": r.timestamp.strftime("%I:%M %p"),
+            "recommended_volume": r.recommended_water_volume_liters,
+            "applied_volume": r.applied_water_volume_liters,
+            "status": r.status.upper()
+        })
+
+    active_alerts_db = db.query(models.AlertEvent).filter(
+        models.AlertEvent.field_id == field.id,
+        models.AlertEvent.status == "active"
+    ).all()
+    
+    alerts_list = [{
+        "severity": a.severity,
+        "alert_type": a.alert_type,
+        "message": a.message,
+        "time": a.created_at.strftime("%Y-%m-%d %I:%M %p")
+    } for a in active_alerts_db]
+
+    weather_desc = "Optimal conditions forecast"
+    try:
+        weather_data = await weather.fetch_weather_data(farm.location_latitude, farm.location_longitude)
+        weather_desc = f"{weather_data.get('temp')}°C, {weather_data.get('conditions')}"
+    except Exception:
+        pass
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        writer.writerow(["AgriSmart Pro - Field Agricultural Report"])
+        writer.writerow(["Generated on", datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        writer.writerow([])
+        writer.writerow(["Farmer", current_user.full_name])
+        writer.writerow(["Farm", farm.name])
+        writer.writerow(["Field", field.name])
+        writer.writerow(["Crop", crop_name])
+        writer.writerow([])
+        writer.writerow(["Soil Moisture", moisture_status])
+        writer.writerow(["Total Water Applied (L)", total_water])
+        writer.writerow(["Estimated Water Saved (L)", water_saved])
+        writer.writerow([])
+        writer.writerow(["ACTIVE ALERTS"])
+        writer.writerow(["Severity", "Alert Type", "Message", "Time"])
+        for a in alerts_list:
+            writer.writerow([a["severity"], a["alert_type"], a["message"], a["time"]])
+            
+        writer.writerow([])
+        writer.writerow(["IRRIGATION HISTORY"])
+        writer.writerow(["Date", "Time", "Recommended Volume (L)", "Applied Volume (L)", "Status"])
+        for h in history_logs:
+            writer.writerow([h["date"], h["time"], h["recommended_volume"], h["applied_volume"], h["status"]])
+            
+        response = StreamingResponse(io.BytesIO(output.getvalue().encode("utf-8")), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename=report_{field.name}_{datetime.now().strftime('%Y%m%d')}.csv"
+        return response
+        
+    else: # PDF
+        pdf_bytes = generate_pdf_report(
+            farmer_name=current_user.full_name,
+            farm_name=farm.name,
+            field_name=field.name,
+            crop_name=crop_name,
+            moisture_summary=moisture_status,
+            irrigation_history=history_logs,
+            water_usage=round(total_water, 1),
+            weather_summary=weather_desc,
+            alerts_list=alerts_list,
+            water_saved=round(water_saved, 1)
+        )
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=report_{field.name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+            }
+        )
+
+
+@router.post("/alerts/evaluate")
+async def evaluate_field_alerts_manually(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Manually triggers evaluation of thresholds and alerts on farmer farms."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    if not farms:
+        return {"status": "success", "message": "No farms registered", "triggered_alerts": []}
+        
+    farm_ids = [f.id for f in farms]
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    
+    total_triggered = []
+    for f in fields:
+        new_alerts = await alerts.evaluate_field_alerts(db, f.id)
+        for a in new_alerts:
+            # Route and dispatch notification for new alerts
+            await notifications.dispatch_alert_notifications(db, a)
+            total_triggered.append({
+                "id": a.id,
+                "field_name": f.name,
+                "alert_type": a.alert_type,
+                "severity": a.severity,
+                "message": a.message
+            })
+            
+    return {
+        "status": "success",
+        "message": f"Evaluated alerts for {len(fields)} fields. Triggered {len(total_triggered)} notifications.",
+        "triggered_alerts": total_triggered
+    }
+
+@router.get("/farmer/alerts", response_model=List[AlertEventResponse])
+def get_farmer_alerts(
+    status: Optional[str] = None,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieves active or resolved alerts for the farmer's fields."""
+    farms = db.query(models.Farm).filter(models.Farm.user_id == current_user.id).all()
+    farm_ids = [f.id for f in farms]
+    fields = db.query(models.Field).filter(models.Field.farm_id.in_(farm_ids)).all()
+    field_ids = [f.id for f in fields]
+    
+    query = db.query(models.AlertEvent).filter(models.AlertEvent.field_id.in_(field_ids))
+    if status:
+        query = query.filter(models.AlertEvent.status == status.lower())
+        
+    return query.order_by(models.AlertEvent.created_at.desc()).all()
+
+@router.get("/farmer/thresholds/{field_id}", response_model=FieldThresholdResponse)
+def get_field_thresholds(
+    field_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Gets configurable thresholds for a field."""
+    field = db.query(models.Field).join(models.Farm).filter(
+        models.Field.id == field_id,
+        models.Farm.user_id == current_user.id
+    ).first()
+    
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found or access denied")
+
+    thresholds = field.thresholds
+    if not thresholds:
+        thresholds = models.FieldThreshold(field_id=field.id)
+        db.add(thresholds)
+        db.commit()
+        db.refresh(thresholds)
+
+    return {
+        "field_id": field.id,
+        "critical_moisture": thresholds.critical_moisture,
+        "warning_moisture": thresholds.warning_moisture,
+        "overwatering_moisture": thresholds.overwatering_moisture,
+        "rain_probability_threshold": thresholds.rain_probability_threshold
+    }
+
+
+@router.put("/farmer/thresholds/{field_id}", response_model=FieldThresholdResponse)
+def update_field_thresholds(
+    field_id: str,
+    threshold_data: FieldThresholdUpdate,
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Updates configurable thresholds for a field. Validates range: critical < warning < overwatering."""
+    field = db.query(models.Field).join(models.Farm).filter(
+        models.Field.id == field_id,
+        models.Farm.user_id == current_user.id
+    ).first()
+    
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found or access denied")
+
+    # Range validations
+    if not (threshold_data.critical_moisture < threshold_data.warning_moisture < threshold_data.overwatering_moisture):
+        raise HTTPException(
+            status_code=422,
+            detail="Thresholds must satisfy the range: Critical Moisture < Warning Moisture < Overwatering Moisture"
+        )
+
+    thresholds = field.thresholds
+    if not thresholds:
+        thresholds = models.FieldThreshold(field_id=field.id)
+        db.add(thresholds)
+
+    thresholds.critical_moisture = threshold_data.critical_moisture
+    thresholds.warning_moisture = threshold_data.warning_moisture
+    thresholds.overwatering_moisture = threshold_data.overwatering_moisture
+    thresholds.rain_probability_threshold = threshold_data.rain_probability_threshold
+
+    db.commit()
+    db.refresh(thresholds)
+    background_tasks.add_task(evaluate_and_dispatch, db, field.id)
+    
+    return {
+        "field_id": field.id,
+        "critical_moisture": thresholds.critical_moisture,
+        "warning_moisture": thresholds.warning_moisture,
+        "overwatering_moisture": thresholds.overwatering_moisture,
+        "rain_probability_threshold": thresholds.rain_probability_threshold
+    }
+
 
 
