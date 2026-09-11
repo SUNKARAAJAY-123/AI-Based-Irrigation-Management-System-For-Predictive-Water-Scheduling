@@ -90,7 +90,25 @@ class ApiClient {
       body: JSON.stringify(body),
     });
   }
+
+  getBaseUrl(): string {
+    return BASE_URL.endsWith("/") ? BASE_URL.slice(0, -1) : BASE_URL;
+  }
+
+  async getBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
+    const cleanBaseUrl = this.getBaseUrl();
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const url = `${cleanBaseUrl}${cleanEndpoint}`;
+    const headers = { ...this.getHeaders(), ...options.headers };
+    
+    const response = await fetch(url, { ...options, headers, method: "GET" });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch blob from ${endpoint}: ${response.statusText}`);
+    }
+    return await response.blob();
+  }
 }
 
 export const api = new ApiClient();
 export default api;
+

@@ -9,14 +9,10 @@ import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { 
   Droplet, 
   Sprout, 
-  CloudSun, 
-  Brain, 
-  Volume2, 
   AlertTriangle, 
   TrendingDown, 
   FileText,
   Calendar,
-  Layers,
   Sparkles,
   ChevronRight,
   ShieldAlert
@@ -161,21 +157,8 @@ export default function FarmerDashboard() {
 
   const handleDownloadReport = async (format: "pdf" | "csv") => {
     if (!isOnline) return;
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const url = `${baseUrl}/farmer/reports?format=${format}`;
-    
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      if (!response.ok) {
-        throw new Error("Failed to download report");
-      }
-      const blob = await response.blob();
+      const blob = await api.getBlob(`/farmer/reports?format=${format}`);
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
@@ -183,8 +166,9 @@ export default function FarmerDashboard() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch (e) {
-      console.error("Report download failed:", e);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error("Error downloading report:", err);
       setError("Failed to download the agricultural report.");
     }
   };

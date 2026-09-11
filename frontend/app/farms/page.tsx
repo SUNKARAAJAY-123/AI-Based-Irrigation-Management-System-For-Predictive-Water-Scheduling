@@ -12,8 +12,7 @@ import {
   PlusCircle, 
   Navigation, 
   Layers, 
-  CheckCircle2, 
-  AlertCircle 
+  CheckCircle2
 } from "lucide-react";
 
 import Button from "@/components/ui/Button";

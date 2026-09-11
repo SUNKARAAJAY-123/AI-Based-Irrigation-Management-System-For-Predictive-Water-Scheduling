@@ -86,7 +86,6 @@ export default function WeatherPage() {
   const [latitudeInput, setLatitudeInput] = useState("");
   const [longitudeInput, setLongitudeInput] = useState("");
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
-  const [customLocationName, setCustomLocationName] = useState<string | null>(null);
 
   const fetchWeather = useCallback(async (farmId: string | null, lat?: number, lon?: number) => {
     setLoading(true);
@@ -162,7 +161,6 @@ export default function WeatherPage() {
         setLatitudeInput(lat.toFixed(6));
         setLongitudeInput(lon.toFixed(6));
         setIsDetectingLocation(false);
-        setCustomLocationName(`Detected Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
         fetchWeather(null, lat, lon);
       },
       (error) => {
@@ -182,7 +180,6 @@ export default function WeatherPage() {
       setError("Please enter valid latitude and longitude numbers.");
       return;
     }
-    setCustomLocationName(`Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
     fetchWeather(null, lat, lon);
   };
 

@@ -97,6 +97,8 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
+        if not self.CORS_ORIGINS or self.CORS_ORIGINS.strip() == "*":
+            return ["*"]
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 

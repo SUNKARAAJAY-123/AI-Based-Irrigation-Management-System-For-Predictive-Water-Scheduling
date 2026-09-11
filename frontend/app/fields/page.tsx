@@ -14,7 +14,6 @@ import {
   AlertTriangle, 
   PlusCircle, 
   Trash2, 
-  Droplet,
   CheckCircle2
 } from "lucide-react";
 

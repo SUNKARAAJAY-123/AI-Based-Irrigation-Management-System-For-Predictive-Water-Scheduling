@@ -7,7 +7,6 @@ import { api } from "@/services/api";
 import { useTranslation } from "@/context/LanguageContext";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { 
-  Settings, 
   Cpu, 
   Droplet, 
   AlertTriangle, 
@@ -62,7 +61,6 @@ interface FieldDetail {
 export default function FieldDetailPage() {
   const { id } = useParams() as { id: string };
   const { user, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
   const { isOnline, saveToCache, loadFromCache } = useOfflineCache();
   const router = useRouter();
 
