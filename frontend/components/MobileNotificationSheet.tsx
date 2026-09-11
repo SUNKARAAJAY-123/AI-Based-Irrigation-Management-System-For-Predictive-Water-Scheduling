@@ -31,7 +31,7 @@ interface MobileNotificationSheetProps {
 
 export const MobileNotificationSheet: React.FC<MobileNotificationSheetProps> = ({
   notifications,
-  onMarkRead,
+  onMarkRead: _onMarkRead,
   onMarkAllRead,
   onClose,
   onItemClick

@@ -1,23 +1,25 @@
 "use client";
-import { useTranslation } from "@/context/LanguageContext";
-import { Locale } from "@/lib/translations";
 
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { api } from "@/services/api";
+import { useTranslation } from "@/context/LanguageContext";
+import { Locale } from "@/lib/translations";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
 import { 
   User, 
-  Mail, 
-  Phone, 
-  Globe, 
-  MapPin, 
-  ShieldAlert, 
-  Calendar,
-  AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  Bell
 } from "lucide-react";
+
+import Button from "@/components/ui/Button";
+import Card, { CardHeader, CardTitle } from "@/components/ui/Card";
+import PageHeader from "@/components/ui/PageHeader";
+import NotificationPreferences from "@/components/NotificationPreferences";
+import ErrorState from "@/components/ui/ErrorState";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 export default function ProfilePage() {
   const { t, setLocale } = useTranslation();
@@ -25,7 +27,6 @@ export default function ProfilePage() {
   const { isOnline } = useOfflineCache();
   const router = useRouter();
 
-  // Form State
   const [formData, setFormData] = useState({
     full_name: "",
     phone_number: "",
@@ -71,7 +72,7 @@ export default function ProfilePage() {
         setLocale(formData.preferred_language as Locale);
       }
       await api.put("/users/profile", formData);
-      setSuccess(t("profile.profile_updated") || "Profile updated successfully!");
+      setSuccess(t("profile.profile_updated") || "Profile settings updated successfully!");
       await refreshProfile();
     } catch (err) {
       setError((err as Error).message || "Failed to update profile settings");
@@ -83,49 +84,46 @@ export default function ProfilePage() {
   if (authLoading) return null;
 
   return (
-    <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      <div className="max-w-xl mx-auto space-y-6">
-        
-        {/* Offline Alert Banner */}
-        {!isOnline && (
-          <div className="bg-amber-600 text-neutral-950 font-bold text-center py-2.5 px-4 rounded-2xl text-xs flex justify-center items-center gap-1.5 shadow-md">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{t("common.offline_banner")}</span>
-          </div>
-        )}
-        
-        {/* Header */}
-        <div className="border-b border-neutral-900 pb-6">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
-            <User className="w-8 h-8 text-emerald-500" />
-            {t("profile.title")}
-          </h1>
-          <p className="text-neutral-450 text-xs mt-1 font-semibold">
-            {t("profile.subtitle")}
-          </p>
+    <div className="min-h-screen bg-[#060a08] text-neutral-100 px-4 py-6 sm:px-6 lg:px-8 pb-24 md:pb-8 max-w-4xl mx-auto space-y-6">
+      
+      <PageHeader
+        title={t("profile.title") || "Farmer Profile & Preferences"}
+        subtitle={t("profile.subtitle") || "Manage account details, preferred regional language, and notification alerts."}
+        icon={<User className="w-6 h-6 stroke-[2.5]" />}
+        action={<StatusBadge status={user?.role === "admin" ? "ATTENTION" : "GOOD"} label={user?.role === "admin" ? "Admin Account" : "Farmer Account"} size="sm" />}
+      />
+
+      {!isOnline && (
+        <div className="bg-amber-500 text-neutral-950 font-black text-center py-2.5 px-4 rounded-2xl text-xs flex justify-center items-center gap-2 shadow-md">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>Working offline. Profile updates require internet connection.</span>
         </div>
+      )}
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-450" />
-            <span>{error}</span>
-          </div>
-        )}
+      {error && <ErrorState message={error} onRetry={() => setError(null)} />}
+
+      {success && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2 font-bold">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {success && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>{success}</span>
-          </div>
-        )}
+        {/* Main Profile Settings Form */}
+        <Card variant="glass" padding="lg" className="space-y-4">
+          <CardHeader>
+            <CardTitle>
+              <User className="w-4.5 h-4.5 text-emerald-400" />
+              Account & Regional Language
+            </CardTitle>
+          </CardHeader>
 
-        <div className="glass-panel rounded-3xl p-6 shadow-xl border border-neutral-900">
           <form onSubmit={handleSubmit} className="space-y-4">
-            
             <div>
-              <label htmlFor="prof-email" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5" />
-                {t("profile.email")}
+              <label htmlFor="prof-email" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Email Address
               </label>
               <input
                 id="prof-email"
@@ -133,14 +131,13 @@ export default function ProfilePage() {
                 disabled
                 value={user?.email || ""}
                 autoComplete="email"
-                className="w-full bg-neutral-950 border border-neutral-900/60 text-xs text-neutral-550 rounded-xl px-4 py-3 outline-none cursor-not-allowed font-bold"
+                className="w-full bg-neutral-950/60 border border-neutral-850 text-xs font-bold text-neutral-500 rounded-2xl px-4 py-3 outline-none cursor-not-allowed min-h-[44px]"
               />
             </div>
 
             <div>
-              <label htmlFor="prof-fullname" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <User className="w-3.5 h-3.5" />
-                {t("profile.full_name")}
+              <label htmlFor="prof-fullname" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Farmer Full Name
               </label>
               <input
                 id="prof-fullname"
@@ -151,14 +148,13 @@ export default function ProfilePage() {
                 onChange={handleChange}
                 autoComplete="name"
                 placeholder="Farmer Name"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50"
+                className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
               />
             </div>
 
             <div>
-              <label htmlFor="prof-phone" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Phone className="w-3.5 h-3.5" />
-                {t("profile.phone_number")}
+              <label htmlFor="prof-phone" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Mobile Number
               </label>
               <input
                 id="prof-phone"
@@ -169,21 +165,20 @@ export default function ProfilePage() {
                 onChange={handleChange}
                 autoComplete="tel"
                 placeholder="Mobile Number"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50"
+                className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
               />
             </div>
 
             <div>
-              <label htmlFor="prof-lang" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Globe className="w-3.5 h-3.5" />
-                {t("profile.preferred_lang")}
+              <label htmlFor="prof-lang" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Preferred Regional Language
               </label>
               <select
                 id="prof-lang"
                 name="preferred_language"
                 value={formData.preferred_language}
                 onChange={handleChange}
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-350 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 font-bold"
+                className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
               >
                 <option value="en-IN">English (India)</option>
                 <option value="hi-IN">हिन्दी (Hindi)</option>
@@ -195,17 +190,13 @@ export default function ProfilePage() {
                 <option value="bn-IN">বাংলা (Bengali)</option>
                 <option value="gu-IN">ગુજરાતી (Gujarati)</option>
                 <option value="pa-IN">ਪੰਜਾਬੀ (Punjabi)</option>
-                <option value="or-IN">ଓଡ଼ିଆ (Odia)</option>
-                <option value="as-IN">অসমীয়া (Assamese)</option>
-                <option value="ur-IN">اردو (Urdu)</option>
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="prof-state" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {t("profile.state")}
+                <label htmlFor="prof-state" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  State
                 </label>
                 <input
                   id="prof-state"
@@ -215,15 +206,14 @@ export default function ProfilePage() {
                   value={formData.state}
                   onChange={handleChange}
                   autoComplete="address-level1"
-                  placeholder="e.g. Karnataka"
-                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50"
+                  placeholder="State"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-3 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
                 />
               </div>
 
               <div>
-                <label htmlFor="prof-district" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {t("profile.district")}
+                <label htmlFor="prof-district" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  District
                 </label>
                 <input
                   id="prof-district"
@@ -233,39 +223,36 @@ export default function ProfilePage() {
                   value={formData.district}
                   onChange={handleChange}
                   autoComplete="address-level2"
-                  placeholder="e.g. Bellary"
-                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3 py-3 outline-none focus:border-emerald-500/50"
+                  placeholder="District"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-3 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
                 />
               </div>
             </div>
 
-            <div className="pt-4 border-t border-neutral-900 mt-6 grid grid-cols-2 text-[9px] text-neutral-500 font-bold uppercase tracking-wider gap-4">
-              <div className="bg-neutral-950/40 border border-neutral-900/60 p-3 rounded-2xl">
-                <span className="flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-neutral-555" />
-                  Account Role
-                </span>
-                <span className="block text-white text-xs font-extrabold mt-1 capitalize">{user?.role}</span>
-              </div>
-              <div className="bg-neutral-950/40 border border-neutral-900/60 p-3 rounded-2xl">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-neutral-555" />
-                  Joined Date
-                </span>
-                <span className="block text-white text-xs font-extrabold mt-1">
-                  {user?.created_at ? new Date(user.created_at).toLocaleDateString("en-IN") : "—"}
-                </span>
-              </div>
-            </div>
-
-            <button
+            <Button
               type="submit"
-              disabled={isSubmitting || !isOnline}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition-all duration-200 mt-6 cursor-pointer shadow-lg active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+              isLoading={isSubmitting}
+              disabled={!isOnline}
+              variant="primary"
+              size="md"
+              className="w-full"
             >
-              {isSubmitting ? "Saving..." : (!isOnline ? "Offline Mode (Cannot Update)" : "Save Settings")}
-            </button>
+              Save Profile Preferences
+            </Button>
           </form>
+        </Card>
+
+        {/* Push Notification Preferences Section */}
+        <div className="space-y-4">
+          <Card variant="glass" padding="lg" className="space-y-4">
+            <CardHeader>
+              <CardTitle>
+                <Bell className="w-4.5 h-4.5 text-emerald-400" />
+                Real-Time Notification Preferences
+              </CardTitle>
+            </CardHeader>
+            <NotificationPreferences />
+          </Card>
         </div>
 
       </div>

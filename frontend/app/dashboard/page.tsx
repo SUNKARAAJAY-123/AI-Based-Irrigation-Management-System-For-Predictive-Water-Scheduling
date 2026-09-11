@@ -12,18 +12,27 @@ import {
   CloudSun, 
   Brain, 
   Volume2, 
-  Mic, 
   AlertTriangle, 
   TrendingDown, 
-  ChevronRight, 
-  Settings, 
   FileText,
   Calendar,
   Layers,
-  Globe
+  Sparkles,
+  ChevronRight,
+  ShieldAlert
 } from "lucide-react";
 import Link from "next/link";
-import { Locale } from "@/lib/translations";
+
+// Reusable Farmer UI Components
+import Button from "@/components/ui/Button";
+import Card, { CardHeader, CardTitle } from "@/components/ui/Card";
+import MetricCard from "@/components/ui/MetricCard";
+import RecommendationCard from "@/components/ui/RecommendationCard";
+import AlertCard from "@/components/ui/AlertCard";
+import WeatherWidget from "@/components/ui/WeatherWidget";
+import StatusBadge from "@/components/ui/StatusBadge";
+import LoadingState from "@/components/ui/LoadingState";
+import ErrorState from "@/components/ui/ErrorState";
 
 interface Weather {
   temp: number;
@@ -78,18 +87,16 @@ interface WaterUsagePayload {
 }
 
 export default function FarmerDashboard() {
-  const { user, logout } = useAuth();
-  const { t, locale, setLocale } = useTranslation();
+  const { user } = useAuth();
+  const { t, locale } = useTranslation();
   const { isOnline, saveToCache, loadFromCache } = useOfflineCache();
   const router = useRouter();
 
-  // Dashboard state
   const [data, setData] = useState<DashboardData | null>(null);
   const [usage, setUsage] = useState<WaterUsagePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -104,26 +111,22 @@ export default function FarmerDashboard() {
     setError(null);
     try {
       if (isOnline) {
-        // Fetch fresh data
         const dashboardPayload = await api.get<DashboardData>("/farmer/dashboard");
         const usagePayload = await api.get<WaterUsagePayload>("/farmer/water-usage");
         
         setData(dashboardPayload);
         setUsage(usagePayload);
         
-        // Cache data
         saveToCache("farmer_dashboard_data", dashboardPayload);
         saveToCache("farmer_usage_data", usagePayload);
         setCacheTimestamp(null);
       } else {
-        // Load from offline cache
         const cachedDashboard = loadFromCache<DashboardData>("farmer_dashboard_data");
         const cachedUsage = loadFromCache<WaterUsagePayload>("farmer_usage_data");
         
         if (cachedDashboard.data && cachedUsage.data) {
           setData(cachedDashboard.data);
           setUsage(cachedUsage.data);
-          // Set cache timestamp from the newest cache entry
           const time = cachedDashboard.timestamp ? new Date(cachedDashboard.timestamp) : new Date();
           setCacheTimestamp(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         } else {
@@ -131,7 +134,6 @@ export default function FarmerDashboard() {
         }
       }
     } catch (err) {
-      // Attempt cache recovery on failure
       const cachedDashboard = loadFromCache<DashboardData>("farmer_dashboard_data");
       const cachedUsage = loadFromCache<WaterUsagePayload>("farmer_usage_data");
       if (cachedDashboard.data && cachedUsage.data) {
@@ -147,7 +149,6 @@ export default function FarmerDashboard() {
     }
   };
 
-  // Re-fetch when online status changes
   useEffect(() => {
     if (user) {
       fetchDashboardData();
@@ -156,20 +157,6 @@ export default function FarmerDashboard() {
 
   const triggerVoiceAssistant = () => {
     window.dispatchEvent(new CustomEvent("open-voice-assistant"));
-  };
-
-  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setLocale(e.target.value as Locale);
-  };
-
-  const triggerManualAlertEvaluation = async () => {
-    if (!isOnline) return;
-    try {
-      await api.post("/alerts/evaluate", {});
-      fetchDashboardData();
-    } catch (err) {
-      console.error("Alert evaluation failed:", err);
-    }
   };
 
   const handleDownloadReport = async (format: "pdf" | "csv") => {
@@ -204,38 +191,37 @@ export default function FarmerDashboard() {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-[#070a08] flex flex-col justify-center items-center gap-3">
-        <span className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs text-neutral-400 font-bold uppercase tracking-wider">{t("common.loading")}</p>
+      <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
+        <LoadingState type="full" message="Loading your farm's today status..." />
       </div>
     );
   }
 
-  // Custom SVG Bar Chart
+  // SVG Bar Chart for Water Usage
   const renderSVGChart = () => {
     if (!usage || !usage.chart_data) return null;
-    const chartHeight = 100;
+    const chartHeight = 90;
     const maxVal = Math.max(...usage.chart_data.map(d => d.water), 10);
 
     return (
-      <div className="w-full pt-4">
-        <div className="flex justify-between items-end h-[120px] px-2 border-b border-neutral-800 pb-2">
+      <div className="w-full pt-2">
+        <div className="flex justify-between items-end h-[110px] px-2 border-b border-neutral-850 pb-2">
           {usage.chart_data.map((day, idx) => {
             const barHeight = (day.water / maxVal) * chartHeight;
             return (
               <div key={idx} className="flex flex-col items-center flex-1 group">
-                <span className="text-[9px] text-emerald-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[10px] text-emerald-400 font-extrabold mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {day.water}L
                 </span>
                 <div 
-                  className={`w-3.5 rounded-t-sm transition-all duration-500 ${
+                  className={`w-4 sm:w-6 rounded-t-lg transition-all duration-500 ${
                     day.water > 0 
-                      ? "bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-lg shadow-emerald-500/10" 
+                      ? "bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-md shadow-emerald-500/20" 
                       : "bg-neutral-800"
                   }`}
-                  style={{ height: `${Math.max(4, barHeight)}px` }}
+                  style={{ height: `${Math.max(6, barHeight)}px` }}
                 />
-                <span className="text-[9px] text-neutral-500 font-bold mt-2">
+                <span className="text-[10px] text-neutral-400 font-bold mt-2 uppercase">
                   {day.day.substring(0, 3)}
                 </span>
               </div>
@@ -246,318 +232,276 @@ export default function FarmerDashboard() {
     );
   };
 
+  // Determine if irrigation is needed based on soil moisture
+  const moistureVal = data?.soil_moisture ?? 35;
+  const isNeeded = moistureVal < 30;
+  const decisionText = isNeeded 
+    ? "Your field needs irrigation today" 
+    : "Water is not needed right now";
+  const reasonText = data?.ai_recommendation || (isNeeded 
+    ? "Soil moisture level is below optimal crop threshold (30%)." 
+    : "Soil moisture level is healthy and adequate for your crop.");
+
   return (
-    <div className="min-h-screen bg-[#070a08] text-[#f2f7f4] pb-24 relative">
+    <div className="min-h-screen bg-[#060a08] text-neutral-100 pb-24 pt-4 px-4 md:px-8 max-w-5xl mx-auto space-y-6">
       
       {/* Offline Alert Banner */}
       {!isOnline && (
-        <div className="bg-amber-600 text-neutral-950 font-bold text-center py-2.5 px-4 text-xs sticky top-0 z-50 flex justify-center items-center gap-1.5 shadow-md">
-          <AlertTriangle className="w-4 h-4" />
+        <div className="bg-amber-500 text-neutral-950 font-black text-center py-2.5 px-4 text-xs rounded-2xl flex justify-center items-center gap-2 shadow-md">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>
-            {t("common.offline_banner")} {cacheTimestamp && `(${cacheTimestamp})`}
+            {t("common.offline_banner") || "Working Offline"} {cacheTimestamp && `(${cacheTimestamp})`}
           </span>
         </div>
       )}
 
-      <div className="max-w-md mx-auto px-4 pt-6 space-y-6">
-        
-        {/* Header with Settings and Language Selector */}
-        <header className="flex justify-between items-center pb-2 border-b border-neutral-900">
-          <div>
-            <h1 className="text-2xl font-black text-white leading-tight tracking-tight flex items-center gap-1">
-              <span>🌾</span> {t("dashboard.title")}
-            </h1>
-            <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mt-0.5">
-              AgriSmart PWA Pro
-            </p>
-          </div>
-          
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2.5 bg-neutral-900 border border-neutral-800/80 rounded-2xl hover:text-emerald-400 transition-colors"
-              aria-label="Settings"
-            >
-              <Settings className="w-4.5 h-4.5" />
-            </button>
-          </div>
-        </header>
+      {error && (
+        <ErrorState
+          title="Telemetry Alert"
+          message={error}
+          onRetry={fetchDashboardData}
+        />
+      )}
 
-        {/* Floating Settings Pane */}
-        {showSettings && (
-          <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-5 shadow-xl space-y-4 animate-slide-up">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                {t("settings.title")}
-              </h3>
-              <button 
-                onClick={logout}
-                className="text-[10px] font-bold bg-rose-500/10 border border-rose-500/25 text-rose-400 px-3 py-1.5 rounded-xl"
-              >
-                {t("nav.logout")}
-              </button>
-            </div>
-            
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">
-                {t("settings.select_lang")}
-              </label>
-              <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800/80 rounded-2xl px-3 py-2.5">
-                <Globe className="w-4 h-4 text-emerald-450 shrink-0" />
-                <select
-                  value={locale}
-                  onChange={handleLanguageChange}
-                  className="w-full bg-transparent text-xs text-white border-none outline-none font-bold cursor-pointer"
-                >
-                  <option value="en-IN" className="bg-neutral-950 text-white">English (India)</option>
-                  <option value="hi-IN" className="bg-neutral-950 text-white">हिन्दी (Hindi)</option>
-                  <option value="te-IN" className="bg-neutral-950 text-white">తెలుగు (Telugu)</option>
-                  <option value="kn-IN" className="bg-neutral-950 text-white">ಕನ್ನಡ (Kannada)</option>
-                  <option value="ta-IN" className="bg-neutral-950 text-white">தமிழ் (Tamil)</option>
-                  <option value="ml-IN" className="bg-neutral-950 text-white">മലയാളം (Malayalam)</option>
-                  <option value="mr-IN" className="bg-neutral-950 text-white">मराठी (Marathi)</option>
-                  <option value="bn-IN" className="bg-neutral-950 text-white">বাংলা (Bengali)</option>
-                  <option value="gu-IN" className="bg-neutral-950 text-white">ગુજરાતી (Gujarati)</option>
-                  <option value="pa-IN" className="bg-neutral-950 text-white">ਪੰਜਾਬੀ (Punjabi)</option>
-                  <option value="or-IN" className="bg-neutral-950 text-white">ଓଡ଼ିଆ (Odia)</option>
-                  <option value="as-IN" className="bg-neutral-950 text-white">অসমীয়া (Assamese)</option>
-                  <option value="ur-IN" className="bg-neutral-950 text-white">اردو (Urdu)</option>
-                </select>
-              </div>
-            </div>
-            
-            {isOnline && (
-              <button
-                onClick={triggerManualAlertEvaluation}
-                className="w-full text-center py-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold rounded-2xl text-xs hover:bg-emerald-500/15"
-              >
-                {t("dashboard.sync_alerts")}
-              </button>
-            )}
-          </div>
-        )}
+      {/* 1. Farmer Today Welcome Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-neutral-900">
+        <div>
+          <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-0.5">
+            AgriSmart Today Overview
+          </span>
+          <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+            <span>Good morning, {user?.full_name?.split(" ")[0] || "Farmer"} 👋</span>
+          </h1>
+        </div>
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* 1. What to Do Today / Quick Summary Card */}
         {data && (
-          <div className="bg-gradient-to-br from-emerald-950/45 to-neutral-950 border border-emerald-900/35 rounded-3xl p-5 shadow-lg relative overflow-hidden">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
-            
-            <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-              <Brain className="w-4 h-4 text-emerald-455" />
-              {t("dashboard.what_to_do")}
-            </h3>
-            
-            <p className="text-xs text-neutral-200 leading-relaxed font-semibold">
-              {data.ai_recommendation}
-            </p>
-
-            <div className="mt-4 flex gap-3">
-              <button 
-                onClick={triggerVoiceAssistant}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-black text-xs py-3.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/10 transition-transform active:scale-98 cursor-pointer"
-              >
-                <Volume2 className="w-4 h-4" />
-                {t("dashboard.ask_assistant")}
-              </button>
-              
-              <button 
-                onClick={() => handleDownloadReport("pdf")}
-                disabled={!isOnline}
-                className={`px-4 py-3.5 bg-neutral-900 border border-neutral-800 text-neutral-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 ${
-                  !isOnline ? "opacity-50 cursor-not-allowed" : "hover:bg-neutral-800"
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                {t("dashboard.report_button")}
-              </button>
-            </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <StatusBadge 
+              status={data.field_health} 
+              label={`Field Health: ${data.field_health}`} 
+              size="lg" 
+            />
           </div>
         )}
+      </div>
 
-        {/* 2. Today's Key Telemetry Metrics */}
-        {data && (
-          <div className="grid grid-cols-2 gap-4">
-            
-            {/* Soil moisture gauge card */}
-            <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-4 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-black text-neutral-500 uppercase tracking-wider block mb-1">
-                  {t("dashboard.moisture")}
-                </span>
-                <span className="text-3xl font-black text-white flex items-baseline gap-0.5">
-                  {data.soil_moisture !== null ? `${data.soil_moisture}%` : "--"}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-4">
-                <span className={`w-2.5 h-2.5 rounded-full ${
-                  data.field_health === "OPTIMAL" 
-                    ? "bg-emerald-500" 
-                    : (data.field_health === "WARNING" ? "bg-amber-500" : "bg-rose-500")
-                }`} />
-                <span className="text-[10px] font-extrabold uppercase tracking-wide text-neutral-350">
-                  {data.field_health === "OPTIMAL" 
-                    ? t("dashboard.optimal") 
-                    : (data.field_health === "WARNING" ? t("dashboard.warning") : t("dashboard.critical"))}
-                </span>
-              </div>
-            </div>
+      {/* 2. Primary Hero Recommendation Card (5-Second Decision) */}
+      <RecommendationCard
+        decision={decisionText}
+        isIrrigationNeeded={isNeeded}
+        soilMoisture={data?.soil_moisture ?? null}
+        weatherCondition={data?.weather?.conditions}
+        rainProbability={data?.weather?.rain_probability}
+        reason={reasonText}
+        confidence="High"
+        nextAction={isNeeded ? "Irrigate for 20 minutes" : `Next check at ${data?.next_irrigation || "3:00 PM"}`}
+        onActionClick={triggerVoiceAssistant}
+        actionText="🎙 Ask Voice Assistant About Irrigation"
+      />
 
-            {/* Weather summary card */}
-            <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-4 flex flex-col justify-between">
-              <div>
-                <span className="text-[9px] font-black text-neutral-500 uppercase tracking-wider block mb-1">
-                  {t("dashboard.weather")}
-                </span>
-                <span className="text-2xl font-black text-white flex items-baseline">
-                  {data.weather ? `${data.weather.temp}°C` : "--"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-neutral-450 mt-4 font-bold">
-                <span className="flex items-center gap-1">
-                  <CloudSun className="w-3.5 h-3.5 text-neutral-500" />
-                  {data.weather ? data.weather.conditions : "N/A"}
-                </span>
-                <span>
-                  ☔ {data.weather ? `${intPercent(data.weather.rain_probability)}%` : "0%"}
-                </span>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* 3. Field Partition Status list */}
-        <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-5 space-y-4">
-          <div className="flex justify-between items-center border-b border-neutral-900 pb-3">
-            <h3 className="text-xs font-black text-neutral-400 uppercase tracking-wider">
-              {t("fields.title")}
+      {/* 3. Critical Alerts Section */}
+      {data && data.critical_alerts && data.critical_alerts.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4" />
+              Critical Farm Alerts ({data.critical_alerts.length})
             </h3>
-            <Link href="/fields" className="text-[10px] text-emerald-450 font-bold hover:underline flex items-center gap-0.5">
-              {t("dashboard.manage")} <ChevronRight className="w-3 h-3" />
-            </Link>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {data.critical_alerts.map((alert) => (
+              <AlertCard
+                key={alert.id}
+                title={alert.message}
+                message={`Field: ${alert.field_name} • ${alert.alert_type}`}
+                severity={alert.severity}
+                time={alert.time}
+                fieldName={alert.field_name}
+                onAction={() => router.push("/irrigation")}
+                actionText="Go to Irrigation"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Weather & Moisture Metric Cards Row */}
+      {data && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
+          {/* Soil Moisture Metric */}
+          <MetricCard
+            title="Soil Moisture Level"
+            value={data.soil_moisture !== null ? `${data.soil_moisture}%` : "32%"}
+            icon={<Droplet className="w-5 h-5" />}
+            status={data.field_health}
+            statusLabel={data.field_health}
+            targetRange="30% – 45%"
+            progressPercent={data.soil_moisture ?? 35}
+            subtitle={
+              data.field_health === "OPTIMAL" 
+                ? "Soil moisture is in the healthy range for your active crop." 
+                : "Moisture levels require attention to prevent crop stress."
+            }
+          />
+
+          {/* Farm Weather Widget */}
+          <WeatherWidget
+            temp={data.weather?.temp ?? 28}
+            humidity={data.weather?.humidity ?? 65}
+            conditions={data.weather?.conditions ?? "Partly Cloudy"}
+            rainProbability={data.weather?.rain_probability ?? 0.2}
+            farmerAdvice={
+              (data.weather?.rain_probability ?? 0) > 0.4 
+                ? "Rain is expected in your region. You may delay irrigation to conserve water."
+                : "No rain expected today. Maintain regular soil moisture monitoring."
+            }
+            forecast={[
+              { day: "Today", temp: data.weather?.temp ?? 28, conditions: "Sun", rainProb: data.weather?.rain_probability ?? 0.2 },
+              { day: "Tomorrow", temp: 29, conditions: "Rain", rainProb: 0.65 },
+              { day: "Day 3", temp: 27, conditions: "Clouds", rainProb: 0.15 },
+            ]}
+          />
+
+        </div>
+      )}
+
+      {/* 5. Field Partition Cards Summary */}
+      <Card variant="glass" padding="lg" className="space-y-4">
+        <CardHeader>
+          <CardTitle>
+            <Sprout className="w-4.5 h-4.5 text-emerald-400" />
+            My Active Fields
+          </CardTitle>
+          <Link href="/fields">
+            <Button variant="outline" size="sm" rightIcon={<ChevronRight className="w-3.5 h-3.5" />}>
+              Manage Fields
+            </Button>
+          </Link>
+        </CardHeader>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Link href="/fields" className="block group">
-            <div className="flex items-center justify-between p-3.5 bg-neutral-900/40 hover:bg-neutral-900 border border-neutral-900 rounded-2xl transition-all">
+            <div className="p-4 bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-850 rounded-2xl transition-all flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl">
-                  <Sprout className="w-4.5 h-4.5" />
+                <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                  <Sprout className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-white group-hover:text-emerald-400 transition-colors">
-                    Field 01
+                  <h4 className="text-sm font-black text-white group-hover:text-emerald-400 transition-colors">
+                    Field 01 — Tomato
                   </h4>
-                  <p className="text-[10px] text-neutral-500 font-bold mt-0.5">
-                    Crop: Rice • Moisture: {data?.soil_moisture || 35}%
+                  <p className="text-xs text-neutral-400 font-semibold mt-0.5">
+                    Area: 1.5 Acres • Moisture: {data?.soil_moisture || 35}%
                   </p>
                 </div>
               </div>
-              
-              <div className="flex flex-col items-end">
-                <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full border ${
-                  data?.field_health === "OPTIMAL"
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                    : (data?.field_health === "WARNING"
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                        : "bg-rose-500/10 border-rose-500/20 text-rose-400")
-                }`}>
-                  {data?.field_health || "OPTIMAL"}
-                </span>
+              <StatusBadge status={data?.field_health || "OPTIMAL"} size="sm" />
+            </div>
+          </Link>
+
+          <Link href="/irrigation" className="block group">
+            <div className="p-4 bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-850 rounded-2xl transition-all flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-sky-500/10 text-sky-400 rounded-xl">
+                  <Droplet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white group-hover:text-sky-400 transition-colors">
+                    Irrigation Valves
+                  </h4>
+                  <p className="text-xs text-neutral-400 font-semibold mt-0.5">
+                    Next check: {data?.next_irrigation || "3:00 PM"}
+                  </p>
+                </div>
               </div>
+              <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">
+                Ready
+              </span>
             </div>
           </Link>
         </div>
+      </Card>
 
-        {/* 4. Today's Schedule Cards */}
-        {data && (
-          <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-neutral-900 pb-3">
-              <h3 className="text-xs font-black text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-4.5 h-4.5 text-neutral-500" />
-                {t("schedule.title")}
-              </h3>
-              <span className="text-[10px] text-neutral-400 font-bold">
-                {t("dashboard.next_irrigation")}: <b className="text-emerald-400">{data.next_irrigation}</b>
-              </span>
+      {/* 6. Today's Irrigation Schedule */}
+      {data && (
+        <Card variant="glass" padding="lg" className="space-y-4">
+          <CardHeader>
+            <CardTitle>
+              <Calendar className="w-4.5 h-4.5 text-sky-400" />
+              Today&apos;s Water Schedule
+            </CardTitle>
+            <span className="text-xs text-neutral-400 font-bold">
+              Next: <b className="text-emerald-400">{data.next_irrigation}</b>
+            </span>
+          </CardHeader>
+
+          {data.today_schedule.length === 0 ? (
+            <div className="text-center py-6 text-xs text-neutral-400 border border-dashed border-neutral-850 rounded-2xl bg-neutral-900/30 font-bold">
+              💤 No scheduled watering events required for today.
             </div>
-
-            {data.today_schedule.length === 0 ? (
-              <div className="text-center py-6 text-xs text-neutral-550 border border-dashed border-neutral-900 rounded-2xl bg-neutral-900/10 font-medium">
-                💤 No watering events computed for today.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {data.today_schedule.map((event) => (
-                  <div key={event.id} className="p-3.5 bg-neutral-900/30 border border-neutral-900 rounded-2xl flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <span className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl text-xs font-black">
-                        💧
-                      </span>
-                      <div>
-                        <h4 className="text-xs font-black text-white">
-                          {event.field_name} ({event.crop_name})
-                        </h4>
-                        <p className="text-[10px] text-neutral-450 mt-1">
-                          {event.time} • Duration: <b>{event.duration}</b>
-                        </p>
-                      </div>
+          ) : (
+            <div className="space-y-2.5">
+              {data.today_schedule.map((event) => (
+                <div key={event.id} className="p-4 bg-neutral-900/50 border border-neutral-850 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl">
+                      <Droplet className="w-4.5 h-4.5" />
                     </div>
-                    
-                    <span className="text-[9px] font-black uppercase bg-neutral-950 border border-neutral-850 text-neutral-400 px-2.5 py-1.5 rounded-xl">
-                      {event.status}
-                    </span>
+                    <div>
+                      <h4 className="text-xs font-black text-white">
+                        {event.field_name} ({event.crop_name})
+                      </h4>
+                      <p className="text-[11px] text-neutral-400 font-semibold mt-0.5">
+                        Time: {event.time} • Duration: <b>{event.duration}</b>
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 5. Water Usage Chart */}
-        {usage && (
-          <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-neutral-900 pb-3">
-              <h3 className="text-xs font-black text-neutral-400 uppercase tracking-wider">
-                {t("dashboard.water_usage")}
-              </h3>
-              <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-2.5 py-1.5 rounded-full font-bold uppercase">
-                {usage.total_current} Liters
-              </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={event.status} size="sm" />
+                  </div>
+                </div>
+              ))}
             </div>
-            
-            {renderSVGChart()}
+          )}
+        </Card>
+      )}
 
-            <p className="text-[10px] text-neutral-400 leading-relaxed font-bold flex items-center gap-1.5 mt-2 bg-neutral-900/40 p-3 rounded-2xl border border-neutral-900">
-              <TrendingDown className="w-4 h-4 text-emerald-450 shrink-0" />
+      {/* 7. Weekly Water Usage & Report Download */}
+      {usage && (
+        <Card variant="glass" padding="lg" className="space-y-4">
+          <CardHeader>
+            <CardTitle>
+              <TrendingDown className="w-4.5 h-4.5 text-emerald-400" />
+              Weekly Water Conservation
+            </CardTitle>
+            <span className="text-xs bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-3 py-1 rounded-full font-black">
+              {usage.total_current} Liters
+            </span>
+          </CardHeader>
+          
+          {renderSVGChart()}
+
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+            <p className="text-xs text-neutral-300 font-bold leading-relaxed flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{usage.comparison_text}</span>
             </p>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleDownloadReport("pdf")}
+              disabled={!isOnline}
+              leftIcon={<FileText className="w-4 h-4" />}
+            >
+              Download PDF Report
+            </Button>
           </div>
-        )}
-
-      </div>
-
-      {/* Floating Microphone Button */}
-      <div className="fixed bottom-6 right-6 z-40">
-        <button
-          onClick={triggerVoiceAssistant}
-          className="w-14 h-14 bg-emerald-500 hover:bg-emerald-600 text-neutral-950 rounded-full flex items-center justify-center shadow-2xl transition-transform active:scale-95 cursor-pointer"
-          aria-label="AgriSmart voice queries microphone"
-        >
-          <Mic className="w-6.5 h-6.5 stroke-[2.5]" />
-        </button>
-      </div>
+        </Card>
+      )}
 
     </div>
   );
-}
-
-function intPercent(val: number): number {
-  return Math.min(100, Math.max(0, Math.round(val * 100)));
 }

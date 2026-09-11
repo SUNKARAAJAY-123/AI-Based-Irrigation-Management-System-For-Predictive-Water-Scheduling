@@ -4,7 +4,12 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, Lock, LogIn, Sparkles, RefreshCw, AlertCircle } from "lucide-react";
+import { LogIn, Sprout } from "lucide-react";
+
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import ErrorState from "@/components/ui/ErrorState";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -39,92 +44,78 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090d0b] flex flex-col justify-center items-center px-4 relative overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/3 w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute bottom-1/4 right-1/3 w-[300px] h-[300px] bg-teal-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-
-      {/* Onboarding Panel */}
-      <div className="w-full max-w-md glass-panel rounded-3xl p-8 shadow-2xl flex flex-col gap-6 border border-neutral-900 animate-slide-up">
-        
-        <div className="text-center">
-          <span className="bg-emerald-500/10 text-emerald-450 text-[10px] font-black px-2.5 py-1 rounded-full border border-emerald-500/25 tracking-widest uppercase inline-flex items-center gap-1 mb-3">
-            <Sparkles className="w-3 h-3 text-emerald-450" />
-            AgriSmart Pro
-          </span>
-          <h2 className="text-2xl font-black text-white">Welcome Back</h2>
-          <p className="text-neutral-450 text-xs mt-1 leading-relaxed">
-            Sign in to access your automated crops recommendation and soil moisture dashboard.
+    <div className="min-h-screen bg-[#060a08] flex flex-col justify-center items-center px-4 relative overflow-hidden">
+      
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+            <Sprout className="w-7 h-7 stroke-[2.5]" />
+          </div>
+          <StatusBadge status="GOOD" label="🌾 AgriSmart Pro Sign In" size="sm" />
+          <h2 className="text-2xl font-black text-white">Welcome Back, Farmer</h2>
+          <p className="text-xs text-neutral-400 font-semibold max-w-xs mx-auto">
+            Access your field recommendations, weather forecast, and smart valve controls.
           </p>
         </div>
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-350 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-450 shrink-0" />
-            <span>{error}</span>
+        {error && <ErrorState message={error} onRetry={() => setError(null)} />}
+
+        <Card variant="glass" padding="lg">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="login-email" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Email Address
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                required
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="farmer@example.com"
+                autoComplete="email"
+                className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="login-password" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Password
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              isLoading={isSubmitting}
+              variant="primary"
+              size="md"
+              className="w-full"
+              leftIcon={<LogIn className="w-4 h-4" />}
+            >
+              Sign In to Farm Panel
+            </Button>
+          </form>
+
+          <div className="text-center text-xs text-neutral-400 font-semibold border-t border-neutral-900 pt-4 mt-4">
+            New to AgriSmart?{" "}
+            <Link href="/register" className="text-emerald-400 font-bold hover:underline">
+              Create Farm Account
+            </Link>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="login-email" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-              <Mail className="w-3.5 h-3.5" />
-              Email Address
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              required
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="farmer@example.com"
-              autoComplete="email"
-              className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-250 rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="login-password" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5" />
-              Security Password
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-250 rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-4 px-4 rounded-xl transition-all duration-200 cursor-pointer shadow-lg shadow-emerald-500/5 flex items-center justify-center gap-2 active:scale-98"
-          >
-            {isSubmitting ? (
-              <RefreshCw className="w-4 h-4 animate-spin stroke-[2.5]" />
-            ) : (
-              <>
-                <LogIn className="w-4 h-4 stroke-[2.5]" />
-                <span>Sign In</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="text-center text-xs text-neutral-450 border-t border-neutral-900 pt-4 mt-2">
-          New to AgriSmart?{" "}
-          <Link href="/register" className="text-emerald-450 font-bold hover:underline">
-            Create Onboarding Profile
-          </Link>
-        </div>
-
+        </Card>
       </div>
+
     </div>
   );
 }

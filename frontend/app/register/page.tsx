@@ -4,17 +4,12 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Globe, 
-  MapPin, 
-  Lock, 
-  Sparkles, 
-  RefreshCw, 
-  AlertCircle 
-} from "lucide-react";
+import { Sprout } from "lucide-react";
+
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import ErrorState from "@/components/ui/ErrorState";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 export default function RegisterPage() {
   const { register, user } = useAuth();
@@ -27,7 +22,7 @@ export default function RegisterPage() {
     state: "",
     district: "",
     preferred_language: "en-IN",
-    role: "FARMER" // Default registration role
+    role: "FARMER"
   });
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,7 +50,6 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
-    // Simple validations
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters long.");
       return;
@@ -71,7 +65,7 @@ export default function RegisterPage() {
       const result = await register(formData);
       if (result && result.pending) {
         setIsPendingApproval(true);
-        setPendingMessage(result.message || "Your Admin registration request has been submitted successfully. Your account will become active only after approval from the Super Admin.");
+        setPendingMessage(result.message || "Your Admin registration request has been submitted successfully. Account will activate after Super Admin approval.");
         setIsSubmitting(false);
       }
     } catch (err) {
@@ -82,267 +76,229 @@ export default function RegisterPage() {
 
   if (isPendingApproval) {
     return (
-      <div className="min-h-screen bg-[#090d0b] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-        {/* Background ambient light */}
-        <div className="absolute top-1/4 left-1/3 w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-        <div className="absolute bottom-1/4 right-1/3 w-[300px] h-[300px] bg-teal-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-
-        <div className="w-full max-w-md glass-panel rounded-3xl p-8 shadow-2xl flex flex-col gap-6 border border-neutral-900 text-center animate-slide-up">
-          <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-2 text-xl font-bold">
+      <div className="min-h-screen bg-[#060a08] flex flex-col justify-center items-center px-4 py-12">
+        <Card variant="glass" padding="lg" className="w-full max-w-md text-center space-y-4">
+          <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-2xl font-black">
             ✓
           </div>
-          <h2 className="text-xl font-black text-white">Request Submitted</h2>
-          <p className="text-neutral-450 text-xs leading-relaxed">
-            {pendingMessage}
-          </p>
-          <div className="pt-4 border-t border-neutral-900 mt-2">
-            <Link href="/login" className="w-full inline-block bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-4 rounded-xl transition-all duration-200">
+          <h2 className="text-xl font-black text-white">Registration Submitted</h2>
+          <p className="text-xs text-neutral-400 font-semibold">{pendingMessage}</p>
+          <Link href="/login" className="block pt-2">
+            <Button variant="primary" size="md" className="w-full">
               Go to Sign In
-            </Link>
-          </div>
-        </div>
+            </Button>
+          </Link>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#090d0b] flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Background ambient light */}
-      <div className="absolute top-1/4 left-1/3 w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute bottom-1/4 right-1/3 w-[300px] h-[300px] bg-teal-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
-
-      {/* Onboarding Register Panel */}
-      <div className="w-full max-w-xl glass-panel rounded-3xl p-8 shadow-2xl flex flex-col gap-6 border border-neutral-900 animate-slide-up">
+    <div className="min-h-screen bg-[#060a08] flex flex-col justify-center items-center px-4 py-12">
+      <div className="w-full max-w-xl space-y-6">
         
-        <div className="text-center">
-          <span className="bg-emerald-500/10 text-emerald-455 text-[10px] font-black px-2.5 py-1 rounded-full border border-emerald-500/25 tracking-widest uppercase inline-flex items-center gap-1 mb-3">
-            <Sparkles className="w-3 h-3 text-emerald-450" />
-            AgriSmart Onboarding
-          </span>
-          <h2 className="text-2xl font-black text-white">Create Farmer Profile</h2>
-          <p className="text-neutral-450 text-xs mt-1 leading-relaxed">
-            Register your profile details to configure soil telemetry and crop recommendation.
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+            <Sprout className="w-7 h-7 stroke-[2.5]" />
+          </div>
+          <StatusBadge status="GOOD" label="🌾 Onboarding Profile Setup" size="sm" />
+          <h2 className="text-2xl font-black text-white">Register Farm Profile</h2>
+          <p className="text-xs text-neutral-400 font-semibold">
+            Create an account to configure soil telemetry and regional voice advice.
           </p>
         </div>
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-350 text-xs px-4 py-3 rounded-2xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-455 shrink-0" />
-            <span>{error}</span>
+        {error && <ErrorState message={error} onRetry={() => setError(null)} />}
+
+        <Card variant="glass" padding="lg">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                Account Type
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, role: "FARMER" }))}
+                  className={`py-2.5 px-4 rounded-2xl text-xs font-black transition-all border cursor-pointer touch-target ${
+                    formData.role === "FARMER"
+                      ? "bg-emerald-500 text-neutral-950 border-emerald-400 shadow-md"
+                      : "bg-neutral-900 border-neutral-850 text-neutral-400"
+                  }`}
+                >
+                  Farmer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, role: "ADMIN" }))}
+                  className={`py-2.5 px-4 rounded-2xl text-xs font-black transition-all border cursor-pointer touch-target ${
+                    formData.role === "ADMIN"
+                      ? "bg-emerald-500 text-neutral-950 border-emerald-400 shadow-md"
+                      : "bg-neutral-900 border-neutral-850 text-neutral-400"
+                  }`}
+                >
+                  Admin
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="reg-fullname" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Full Name
+                </label>
+                <input
+                  id="reg-fullname"
+                  type="text"
+                  required
+                  name="full_name"
+                  value={formData.full_name}
+                  onChange={handleChange}
+                  placeholder="Farmer Name"
+                  autoComplete="name"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-email" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Email Address
+                </label>
+                <input
+                  id="reg-email"
+                  type="email"
+                  required
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="farmer@example.com"
+                  autoComplete="email"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-phone" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Phone Number
+                </label>
+                <input
+                  id="reg-phone"
+                  type="tel"
+                  required
+                  name="phone_number"
+                  value={formData.phone_number}
+                  onChange={handleChange}
+                  placeholder="Mobile Number"
+                  autoComplete="tel"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-lang" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Language
+                </label>
+                <select
+                  id="reg-lang"
+                  name="preferred_language"
+                  value={formData.preferred_language}
+                  onChange={handleChange}
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                >
+                  <option value="en-IN">English (India)</option>
+                  <option value="hi-IN">Hindi (हिन्दी)</option>
+                  <option value="te-IN">Telugu (తెలుగు)</option>
+                  <option value="kn-IN">Kannada (ಕನ್ನಡ)</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="reg-state" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  State
+                </label>
+                <input
+                  id="reg-state"
+                  type="text"
+                  required
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  placeholder="State"
+                  autoComplete="address-level1"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-district" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  District
+                </label>
+                <input
+                  id="reg-district"
+                  type="text"
+                  required
+                  name="district"
+                  value={formData.district}
+                  onChange={handleChange}
+                  placeholder="District"
+                  autoComplete="address-level2"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-password" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Password
+                </label>
+                <input
+                  id="reg-password"
+                  type="password"
+                  required
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reg-confirmpass" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+                  Confirm Password
+                </label>
+                <input
+                  id="reg-confirmpass"
+                  type="password"
+                  required
+                  name="confirm_password"
+                  value={formData.confirm_password}
+                  onChange={handleChange}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              isLoading={isSubmitting}
+              variant="primary"
+              size="md"
+              className="w-full mt-4"
+            >
+              Create Account
+            </Button>
+          </form>
+
+          <div className="text-center text-xs text-neutral-400 font-semibold border-t border-neutral-900 pt-4 mt-4">
+            Already registered?{" "}
+            <Link href="/login" className="text-emerald-400 font-bold hover:underline">
+              Sign In
+            </Link>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1">
-              Register As
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, role: "FARMER" }))}
-                className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                  formData.role === "FARMER"
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                    : "bg-neutral-950 border-neutral-900 text-neutral-450 hover:text-neutral-300"
-                }`}
-              >
-                Farmer
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, role: "ADMIN" }))}
-                className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                  formData.role === "ADMIN"
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                    : "bg-neutral-950 border-neutral-900 text-neutral-450 hover:text-neutral-300"
-                }`}
-              >
-                Admin
-              </button>
-            </div>
-            
-            {/* Conditional helper message banner */}
-            <div className="mt-2 p-3 bg-neutral-950 border border-neutral-900 rounded-xl text-[10px]">
-              {formData.role === "FARMER" ? (
-                <p className="text-emerald-500/70 font-semibold">
-                  ℹ You can access your account immediately after registration.
-                </p>
-              ) : (
-                <p className="text-sky-500/70 font-semibold">
-                  ℹ Admin accounts require approval from the Super Admin before access is granted.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            <div>
-              <label htmlFor="reg-fullname" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <User className="w-3.5 h-3.5 text-neutral-500" />
-                Full Name
-              </label>
-              <input
-                id="reg-fullname"
-                type="text"
-                required
-                name="full_name"
-                value={formData.full_name}
-                onChange={handleChange}
-                placeholder="Ajay Sunkara"
-                autoComplete="name"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-email" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5 text-neutral-500" />
-                Email Address
-              </label>
-              <input
-                id="reg-email"
-                type="email"
-                required
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="farmer@example.com"
-                autoComplete="email"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-phone" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Phone className="w-3.5 h-3.5 text-neutral-500" />
-                Phone Number
-              </label>
-              <input
-                id="reg-phone"
-                type="tel"
-                required
-                name="phone_number"
-                value={formData.phone_number}
-                onChange={handleChange}
-                placeholder="Mobile Number"
-                autoComplete="tel"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-lang" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Globe className="w-3.5 h-3.5 text-neutral-500" />
-                Preferred Assist Language
-              </label>
-              <select
-                id="reg-lang"
-                name="preferred_language"
-                value={formData.preferred_language}
-                onChange={handleChange}
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-350 rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500/50 font-bold"
-              >
-                <option value="en-IN">English (India)</option>
-                <option value="hi-IN">Hindi (हिन्दी)</option>
-                <option value="kn-IN">Kannada (ಕನ್ನಡ)</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="reg-state" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-neutral-500" />
-                State
-              </label>
-              <input
-                id="reg-state"
-                type="text"
-                required
-                name="state"
-                value={formData.state}
-                onChange={handleChange}
-                placeholder="e.g. Karnataka"
-                autoComplete="address-level1"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-district" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-neutral-500" />
-                District
-              </label>
-              <input
-                id="reg-district"
-                type="text"
-                required
-                name="district"
-                value={formData.district}
-                onChange={handleChange}
-                placeholder="e.g. Bellary"
-                autoComplete="address-level2"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-password" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-neutral-500" />
-                Password
-              </label>
-              <input
-                id="reg-password"
-                type="password"
-                required
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                autoComplete="new-password"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="reg-confirmpass" className="text-[9px] font-black text-neutral-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-neutral-500" />
-                Confirm Password
-              </label>
-              <input
-                id="reg-confirmpass"
-                type="password"
-                required
-                name="confirm_password"
-                value={formData.confirm_password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                autoComplete="new-password"
-                className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-205 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 placeholder:text-neutral-700"
-              />
-            </div>
-
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-4 px-4 rounded-xl transition-all duration-200 mt-6 cursor-pointer shadow-lg flex justify-center items-center gap-2 active:scale-98"
-          >
-            {isSubmitting ? (
-              <RefreshCw className="w-4 h-4 animate-spin stroke-[2.5]" />
-            ) : (
-              <span>Create Account</span>
-            )}
-          </button>
-        </form>
-
-        <div className="text-center text-xs text-neutral-450 border-t border-neutral-900 pt-4 mt-2">
-          Already registered?{" "}
-          <Link href="/login" className="text-emerald-450 font-bold hover:underline">
-            Sign In
-          </Link>
-        </div>
+        </Card>
 
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { CheckCheck, Settings, X, Calendar, ArrowRight } from "lucide-react";
+import { CheckCheck, Settings, X, ArrowRight } from "lucide-react";
 import { useTranslation } from "@/context/LanguageContext";
 import { NotificationPreferences } from "./NotificationPreferences";
 
@@ -31,7 +31,7 @@ interface NotificationPopoverProps {
 
 export const NotificationPopover: React.FC<NotificationPopoverProps> = ({
   notifications,
-  onMarkRead,
+  onMarkRead: _onMarkRead,
   onMarkAllRead,
   onClose,
   onItemClick

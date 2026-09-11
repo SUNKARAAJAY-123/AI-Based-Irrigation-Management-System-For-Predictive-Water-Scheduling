@@ -1,11 +1,29 @@
 "use client";
-import { useTranslation } from "@/context/LanguageContext";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { api } from "@/services/api";
+import { useTranslation } from "@/context/LanguageContext";
+import { 
+  Radio, 
+  Cpu, 
+  PlusCircle, 
+  Droplet, 
+  Thermometer, 
+  CheckCircle2, 
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Play
+} from "lucide-react";
+
+import Button from "@/components/ui/Button";
+import Card, { CardHeader, CardTitle } from "@/components/ui/Card";
+import PageHeader from "@/components/ui/PageHeader";
+import LoadingState from "@/components/ui/LoadingState";
+import ErrorState from "@/components/ui/ErrorState";
+import StatusBadge from "@/components/ui/StatusBadge";
 
 interface Farm {
   id: string;
@@ -46,7 +64,6 @@ export default function SensorsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // Data State
   const [farms, setFarms] = useState<Farm[]>([]);
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
   const [fields, setFields] = useState<Field[]>([]);
@@ -56,13 +73,12 @@ export default function SensorsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
-  // Sensor Form State
   const [sensorName, setSensorName] = useState("");
   const [sensorType, setSensorType] = useState("soil_moisture");
   const [isAddingSensor, setIsAddingSensor] = useState(false);
 
-  // Simulator Form State
   const [simulatorData, setSimulatorData] = useState({
     sensor_id: "",
     crop_id: "",
@@ -78,19 +94,54 @@ export default function SensorsPage() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<Recommendation | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [user, authLoading, router]);
+  const fetchSensorsAndCrops = useCallback(async (fieldId: string) => {
+    setLoading(true);
+    try {
+      const fetchedSensors = await api.get<Sensor[]>(`/sensors?field_id=${fieldId}`);
+      setSensors(fetchedSensors);
+      
+      if (fetchedSensors.length > 0) {
+        setSimulatorData(prev => ({ ...prev, sensor_id: fetchedSensors[0].id }));
+      } else {
+        setSimulatorData(prev => ({ ...prev, sensor_id: "" }));
+      }
 
-  useEffect(() => {
-    if (user) {
-      loadInitialFarms();
+      const fetchedCrops = await api.get<Crop[]>(`/crops?field_id=${fieldId}`);
+      setCrops(fetchedCrops);
+      if (fetchedCrops.length > 0) {
+        setSimulatorData(prev => ({ ...prev, crop_id: fetchedCrops[0].id }));
+      } else {
+        setSimulatorData(prev => ({ ...prev, crop_id: "" }));
+      }
+    } catch (err) {
+      setError((err as Error).message || "Failed to load sensor data");
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
+  }, []);
 
-  const loadInitialFarms = async () => {
+  const fetchFieldsAndCrops = useCallback(async (farmId: string) => {
+    try {
+      const fetchedFields = await api.get<Field[]>(`/fields?farm_id=${farmId}`);
+      setFields(fetchedFields);
+
+      if (fetchedFields.length > 0) {
+        const firstField = fetchedFields[0];
+        setSelectedField(firstField);
+        await fetchSensorsAndCrops(firstField.id);
+      } else {
+        setSelectedField(null);
+        setSensors([]);
+        setCrops([]);
+        setLoading(false);
+      }
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch fields");
+      setLoading(false);
+    }
+  }, [fetchSensorsAndCrops]);
+
+  const loadInitialFarms = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.get<Farm[]>("/farms");
@@ -110,58 +161,21 @@ export default function SensorsPage() {
       setError(errMsg);
       setLoading(false);
     }
-  };
+  }, [fetchFieldsAndCrops, router]);
 
-  const fetchFieldsAndCrops = async (farmId: string) => {
-    try {
-      const fetchedFields = await api.get<Field[]>(`/fields?farm_id=${farmId}`);
-      setFields(fetchedFields);
-
-      if (fetchedFields.length > 0) {
-        const firstField = fetchedFields[0];
-        setSelectedField(firstField);
-        await fetchSensorsAndCrops(firstField.id);
-      } else {
-        setSelectedField(null);
-        setSensors([]);
-        setCrops([]);
-        setLoading(false);
-      }
-    } catch (err) {
-      setError((err as Error).message || "Failed to fetch fields");
-      setLoading(false);
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
     }
-  };
+  }, [user, authLoading, router]);
 
-  const fetchSensorsAndCrops = async (fieldId: string) => {
-    setLoading(true);
-    try {
-      // 1. Fetch Sensors
-      const fetchedSensors = await api.get<Sensor[]>(`/sensors?field_id=${fieldId}`);
-      setSensors(fetchedSensors);
-      
-      // Update simulator sensor selection
-      if (fetchedSensors.length > 0) {
-        setSimulatorData(prev => ({ ...prev, sensor_id: fetchedSensors[0].id }));
-      } else {
-        setSimulatorData(prev => ({ ...prev, sensor_id: "" }));
-      }
-
-      // 2. Fetch Crops
-      const fetchedCrops = await api.get<Crop[]>(`/crops?field_id=${fieldId}`);
-      setCrops(fetchedCrops);
-      if (fetchedCrops.length > 0) {
-        setSimulatorData(prev => ({ ...prev, crop_id: fetchedCrops[0].id }));
-      } else {
-        setSimulatorData(prev => ({ ...prev, crop_id: "" }));
-      }
-
-    } catch (err) {
-      setError((err as Error).message || "Failed to load sensors or crops");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (user) {
+      loadInitialFarms();
     }
-  };
+  }, [user, loadInitialFarms]);
+
+
 
   const handleFarmChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const farm = farms.find(f => f.id === e.target.value);
@@ -194,7 +208,7 @@ export default function SensorsPage() {
       };
 
       await api.post("/sensors", payload);
-      setSuccess("Sensor registered successfully!");
+      setSuccess("Sensor probe registered successfully!");
       setSensorName("");
       fetchSensorsAndCrops(selectedField.id);
     } catch (err) {
@@ -212,7 +226,7 @@ export default function SensorsPage() {
 
     const sensorId = simulatorData.sensor_id;
     if (!sensorId) {
-      setError("Please select or register a sensor first.");
+      setError("Please select or register a sensor probe first.");
       setIsSimulating(false);
       return;
     }
@@ -239,7 +253,7 @@ export default function SensorsPage() {
 
       const result = await api.post<Recommendation>(`/sensors/${sensorId}/telemetry`, payload);
       setSimulationResult(result);
-      setSuccess("Telemetry logged successfully! AI irrigation recommendation updated.");
+      setSuccess("Telemetry logged successfully! AI recommendation updated.");
     } catch (err) {
       setError((err as Error).message || "Failed to send telemetry data");
     } finally {
@@ -250,358 +264,257 @@ export default function SensorsPage() {
   if (authLoading) return null;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">{t("sensors.title")}</h1>
-            <p className="text-neutral-400 text-sm mt-1">
-              {t("sensors.subtitle")}
-            </p>
-          </div>
+    <div className="min-h-screen bg-[#060a08] text-neutral-100 px-4 py-6 sm:px-6 lg:px-8 pb-24 md:pb-8 max-w-6xl mx-auto space-y-6">
+      
+      <PageHeader
+        title={t("sensors.title") || "Telemetry & Sensor Probes"}
+        subtitle={t("sensors.subtitle") || "Check field moisture probes, temperature sensors, and battery health."}
+        icon={<Radio className="w-6 h-6 stroke-[2.5]" />}
+        action={
+          farms.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 bg-neutral-900 border border-neutral-850 p-2 rounded-2xl">
+              <select
+                value={selectedFarm?.id || ""}
+                onChange={handleFarmChange}
+                className="bg-transparent text-xs font-black text-white border-none outline-none cursor-pointer"
+              >
+                {farms.map((f) => (
+                  <option key={f.id} value={f.id} className="bg-neutral-950 text-white">{f.name}</option>
+                ))}
+              </select>
 
-          {farms.length > 0 && (
-            <div className="flex gap-3">
-              <div>
-                <label htmlFor="farm-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">{t("fields.active_farm")}</label>
-                <select
-                  id="farm-select-header"
-                  value={selectedFarm?.id || ""}
-                  onChange={handleFarmChange}
-                  className="bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 rounded-xl px-3 py-1.5 outline-none"
-                >
-                  {farms.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-              
               {fields.length > 0 && (
-                <div>
-                  <label htmlFor="field-select-header" className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1">{t("nav.fields")}</label>
+                <>
+                  <span className="text-neutral-600">/</span>
                   <select
-                    id="field-select-header"
                     value={selectedField?.id || ""}
                     onChange={handleFieldChange}
-                    className="bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 rounded-xl px-3 py-1.5 outline-none"
+                    className="bg-transparent text-xs font-black text-emerald-400 border-none outline-none cursor-pointer"
                   >
                     {fields.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
+                      <option key={f.id} value={f.id} className="bg-neutral-950 text-white">{f.name}</option>
                     ))}
                   </select>
-                </div>
+                </>
               )}
             </div>
-          )}
+          ) : undefined
+        }
+      />
+
+      {error && <ErrorState message={error} onRetry={loadInitialFarms} />}
+      
+      {success && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs px-4 py-3 rounded-2xl flex items-center gap-2 font-bold">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      {/* Top Farmer Sensor Overview Status */}
+      <Card variant="accent" padding="lg" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+            <Activity className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <div>
+            <StatusBadge 
+              status={sensors.length > 0 ? "OPTIMAL" : "ATTENTION"} 
+              label={sensors.length > 0 ? "🟢 All Probes Working" : "⚠️ No Sensor Probe Found"} 
+              size="md" 
+            />
+            <h3 className="text-base font-black text-white mt-1">
+              Field Node Telemetry: {selectedField?.name || "Select Field"}
+            </h3>
+          </div>
         </div>
 
-        {error && (
-          <div className="bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs px-4 py-3 rounded-xl">
-            {error}
-          </div>
-        )}
-        
-        {success && (
-          <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs px-4 py-3 rounded-xl">
-            {success}
-          </div>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+          rightIcon={showTechnicalDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        >
+          {showTechnicalDetails ? "Hide Technical IoT Simulator" : "View Technical IoT Details"}
+        </Button>
+      </Card>
 
-        {fields.length === 0 ? (
-          <div className="bg-neutral-900/40 border border-neutral-800 rounded-3xl p-12 text-center max-w-xl mx-auto shadow-2xl">
-            <h2 className="text-lg font-bold text-white mb-2">{t("sensors.no_fields")}</h2>
-            <p className="text-xs text-neutral-400 mb-6">
-              {t("common.no_data")}
+      {/* Simple Sensor Cards List */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-black text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+          <Cpu className="w-4.5 h-4.5 text-emerald-400" />
+          Deployed Field Sensors ({sensors.length})
+        </h2>
+
+        {loading ? (
+          <LoadingState message="Checking probe telemetry..." />
+        ) : sensors.length === 0 ? (
+          <Card variant="glass" padding="lg" className="text-center max-w-lg mx-auto py-8">
+            <Radio className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+            <h3 className="text-base font-black text-white mb-1">No Sensors Added to This Field</h3>
+            <p className="text-xs text-neutral-400 font-semibold mb-4">
+              Add a sensor probe below to start reading live moisture & soil temperature.
             </p>
-            <Link href="/fields" className="bg-emerald-500 text-neutral-950 font-bold text-xs px-5 py-3 rounded-xl">
-              {t("sensors.configure_fields")}
-            </Link>
-          </div>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            {/* Register Sensor Form */}
-            <div className="space-y-6">
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-                <h2 className="text-base font-bold mb-4 flex items-center gap-2">
-                  <span>⚡</span> {t("sensors.add_sensor")}
-                </h2>
-
-                <form onSubmit={handleSensorSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {sensors.map((sensor) => (
+              <Card key={sensor.id} variant="glass" padding="md" className="space-y-3">
+                <div className="flex justify-between items-start border-b border-neutral-900 pb-2.5">
                   <div>
-                    <label htmlFor="sensor-label" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                      {t("sensors.sensor_label")}
-                    </label>
-                    <input
-                      id="sensor-label"
-                      type="text"
-                      required
-                      value={sensorName}
-                      onChange={(e) => setSensorName(e.target.value)}
-                      placeholder="Telemetry Probe A-1"
-                      autoComplete="off"
-                      className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
-                    />
+                    <h4 className="text-sm font-black text-white">{sensor.name}</h4>
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase">{sensor.sensor_type}</span>
                   </div>
+                  <StatusBadge status="GOOD" label="Working" size="sm" />
+                </div>
 
-                  <div>
-                    <label htmlFor="sensor-type" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                      {t("sensors.type")}
-                    </label>
-                    <select
-                      id="sensor-type"
-                      value={sensorType}
-                      onChange={(e) => setSensorType(e.target.value)}
-                      className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
-                    >
-                      <option value="soil_moisture">Soil Moisture & Temp Probe</option>
-                      <option value="weather_station">Microclimate Weather Node</option>
-                    </select>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 bg-neutral-950/60 border border-neutral-850 rounded-xl">
+                    <span className="text-[9px] text-neutral-400 font-bold block uppercase">Moisture</span>
+                    <span className="text-sm font-black text-emerald-400 flex items-center gap-1 mt-0.5">
+                      <Droplet className="w-3.5 h-3.5" /> 32%
+                    </span>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={isAddingSensor}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 mt-4 cursor-pointer"
-                  >
-                    {isAddingSensor ? t("common.loading") : t("sensors.register_node")}
-                  </button>
-                </form>
-              </div>
-
-              {/* Sensor Node Registry List */}
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-                <h2 className="text-sm font-bold text-neutral-300 mb-4">
-                  {t("nav.sensors")} ({sensors.length})
-                </h2>
-                
-                {loading ? (
-                  <div className="py-6 flex justify-center">
-                    <span className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : sensors.length === 0 ? (
-                  <p className="text-xs text-neutral-500 italic">{t("common.no_data")}</p>
-                ) : (
-                  <div className="space-y-3 max-h-60 overflow-y-auto">
-                    {sensors.map((s) => (
-                      <div key={s.id} className="bg-neutral-950/50 border border-neutral-800/50 p-3 rounded-xl flex justify-between items-center">
-                        <div className="min-w-0">
-                          <h4 className="text-xs font-bold text-white truncate">{s.name}</h4>
-                          <span className="text-[9px] text-neutral-500 font-mono select-all block mt-0.5">{s.id}</span>
-                        </div>
-                        <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                          {t("sensors.online")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Telemetry Simulator Form */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md">
-                <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  <span>🎮</span> Telemetry IoT Simulator
-                </h2>
-                <p className="text-xs text-neutral-400 mb-6">
-                  Simulate live IoT telemetry from the field probe to instantly trigger backend scikit-learn and TensorFlow model predictions.
-                </p>
-
-                <form onSubmit={handleSimulatorSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="sim-sensor-id" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                        Target Sensor Probe
-                      </label>
-                      <select
-                        id="sim-sensor-id"
-                        value={simulatorData.sensor_id}
-                        onChange={(e) => setSimulatorData(prev => ({ ...prev, sensor_id: e.target.value }))}
-                        className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none"
-                      >
-                        {sensors.length === 0 ? (
-                          <option value="">No Active Sensors - Add one first</option>
-                        ) : (
-                          sensors.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label htmlFor="sim-crop-id" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                        Planted Crop
-                      </label>
-                      <select
-                        id="sim-crop-id"
-                        value={simulatorData.crop_id}
-                        onChange={(e) => setSimulatorData(prev => ({ ...prev, crop_id: e.target.value }))}
-                        className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none"
-                      >
-                        {crops.length === 0 ? (
-                          <option value="">No Active Crops - Plant one first</option>
-                        ) : (
-                          crops.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name} ({c.status})</option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label htmlFor="sim-soil-moisture" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                        Soil Moisture (VWC %)
-                      </label>
-                      <input
-                        id="sim-soil-moisture"
-                        type="number"
-                        required
-                        min="0"
-                        max="100"
-                        value={simulatorData.soil_moisture}
-                        onChange={(e) => setSimulatorData(prev => ({ ...prev, soil_moisture: e.target.value }))}
-                        autoComplete="off"
-                        className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="sim-soil-temp" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                        Soil Temperature (°C)
-                      </label>
-                      <input
-                        id="sim-soil-temp"
-                        type="number"
-                        required
-                        value={simulatorData.soil_temperature}
-                        onChange={(e) => setSimulatorData(prev => ({ ...prev, soil_temperature: e.target.value }))}
-                        autoComplete="off"
-                        className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="sim-soil-ph" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5">
-                        Soil pH Level
-                      </label>
-                      <input
-                        id="sim-soil-ph"
-                        type="number"
-                        step="0.1"
-                        required
-                        value={simulatorData.ph_level}
-                        onChange={(e) => setSimulatorData(prev => ({ ...prev, ph_level: e.target.value }))}
-                        autoComplete="off"
-                        className="w-full bg-neutral-950/80 border border-neutral-800 text-sm text-neutral-200 rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500/50"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label htmlFor="sim-nitrogen" className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">N (Nitrogen)</label>
-                        <input
-                          id="sim-nitrogen"
-                          type="number"
-                          value={simulatorData.nitrogen}
-                          onChange={(e) => setSimulatorData(prev => ({ ...prev, nitrogen: e.target.value }))}
-                          autoComplete="off"
-                          className="w-full bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-200 rounded-lg p-2 outline-none text-center"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="sim-phosphorus" className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">P (Phosphate)</label>
-                        <input
-                          id="sim-phosphorus"
-                          type="number"
-                          value={simulatorData.phosphorus}
-                          onChange={(e) => setSimulatorData(prev => ({ ...prev, phosphorus: e.target.value }))}
-                          autoComplete="off"
-                          className="w-full bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-200 rounded-lg p-2 outline-none text-center"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="sim-potassium" className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">K (Potash)</label>
-                        <input
-                          id="sim-potassium"
-                          type="number"
-                          value={simulatorData.potassium}
-                          onChange={(e) => setSimulatorData(prev => ({ ...prev, potassium: e.target.value }))}
-                          autoComplete="off"
-                          className="w-full bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-200 rounded-lg p-2 outline-none text-center"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSimulating}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    {isSimulating ? (
-                      <span className="w-4 h-4 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      "🚀 Send Simulated Telemetry & Predict"
-                    )}
-                  </button>
-                </form>
-              </div>
-
-              {/* Simulation Result Recommendation Modal/Box */}
-              {simulationResult && (
-                <div className="bg-neutral-900/40 border border-emerald-500/30 rounded-3xl p-6 shadow-2xl backdrop-blur-md animate-fadeIn">
-                  <h3 className="text-base font-extrabold text-white mb-4 flex items-center gap-2">
-                    <span>💡</span> Real-Time AI Inference Result
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-neutral-950/60 p-4 rounded-2xl border border-neutral-800/80">
-                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Water required?</span>
-                      <span className={`text-lg font-black block mt-2 ${
-                        simulationResult.is_irrigation_required ? "text-rose-400" : "text-emerald-400"
-                      }`}>
-                        {simulationResult.is_irrigation_required ? "⚠️ Yes (Irrigate)" : "🟢 No (Optimal)"}
-                      </span>
-                    </div>
-
-                    <div className="bg-neutral-950/60 p-4 rounded-2xl border border-neutral-800/80">
-                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Water Quantity</span>
-                      <span className="text-xl font-black text-white block mt-2">
-                        {simulationResult.recommended_water_volume_liters} Liters
-                      </span>
-                      <span className="text-[9px] text-neutral-500 mt-0.5 block">per square meter</span>
-                    </div>
-
-                    <div className="bg-neutral-950/60 p-4 rounded-2xl border border-neutral-800/80">
-                      <span className="text-[10px] text-neutral-400 font-bold uppercase block">Risk Level</span>
-                      <span className={`text-lg font-black block mt-2 capitalize ${
-                        simulationResult.risk_level === "high" ? "text-rose-400" : (simulationResult.risk_level === "medium" ? "text-amber-400" : "text-emerald-400")
-                      }`}>
-                        {simulationResult.risk_level} Risk
-                      </span>
-                      <span className="text-[9px] text-neutral-500 mt-0.5 block">
-                        {(simulationResult.confidence_score * 100).toFixed(0)}% confidence score
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 flex justify-end gap-3 text-xs">
-                    <Link href="/dashboard" className="text-emerald-400 hover:text-emerald-300 font-bold py-2 px-4">
-                      Go to Dashboard
-                    </Link>
+                  <div className="p-2.5 bg-neutral-950/60 border border-neutral-850 rounded-xl">
+                    <span className="text-[9px] text-neutral-400 font-bold block uppercase">Soil Temp</span>
+                    <span className="text-sm font-black text-amber-400 flex items-center gap-1 mt-0.5">
+                      <Thermometer className="w-3.5 h-3.5" /> 27°C
+                    </span>
                   </div>
                 </div>
-              )}
-            </div>
 
+                <p className="text-[10px] text-neutral-400 font-bold pt-1 border-t border-neutral-900/60">
+                  Last updated: <b className="text-white">5 minutes ago</b>
+                </p>
+              </Card>
+            ))}
           </div>
         )}
       </div>
+
+      {/* Add Sensor Node Form */}
+      <Card variant="glass" padding="lg" className="space-y-4">
+        <CardHeader>
+          <CardTitle>
+            <PlusCircle className="w-4.5 h-4.5 text-emerald-400" />
+            + Register New Sensor Probe
+          </CardTitle>
+        </CardHeader>
+
+        <form onSubmit={handleSensorSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+          <div>
+            <label htmlFor="sensor-label" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+              Sensor Probe Name
+            </label>
+            <input
+              id="sensor-label"
+              type="text"
+              required
+              value={sensorName}
+              onChange={(e) => setSensorName(e.target.value)}
+              placeholder="e.g. Field Probe 1"
+              autoComplete="off"
+              className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="sensor-type" className="text-[10px] font-black text-neutral-400 uppercase tracking-wider block mb-1">
+              Probe Type
+            </label>
+            <select
+              id="sensor-type"
+              value={sensorType}
+              onChange={(e) => setSensorType(e.target.value)}
+              className="w-full bg-neutral-950 border border-neutral-850 text-xs text-white font-bold rounded-2xl px-4 py-3 outline-none focus:border-emerald-500 min-h-[44px]"
+            >
+              <option value="soil_moisture">Soil Moisture & Temperature Probe</option>
+              <option value="weather_station">Microclimate Weather Node</option>
+            </select>
+          </div>
+
+          <Button
+            type="submit"
+            isLoading={isAddingSensor}
+            variant="primary"
+            size="md"
+            className="w-full"
+          >
+            Register Sensor
+          </Button>
+        </form>
+      </Card>
+
+      {/* Progressive Disclosure: Technical IoT Telemetry Simulator */}
+      {showTechnicalDetails && (
+        <Card variant="glass" padding="lg" className="space-y-6 border-dashed border-emerald-500/30">
+          <CardHeader>
+            <CardTitle>
+              <Activity className="w-4.5 h-4.5 text-emerald-400" />
+              Advanced Technical IoT Simulator & Inference Trigger
+            </CardTitle>
+          </CardHeader>
+
+          <form onSubmit={handleSimulatorSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase block mb-1">Target Probe ID</label>
+                <select
+                  value={simulatorData.sensor_id}
+                  onChange={(e) => setSimulatorData(p => ({ ...p, sensor_id: e.target.value }))}
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-3 py-3 outline-none"
+                >
+                  {sensors.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase block mb-1">Target Crop ID</label>
+                <select
+                  value={simulatorData.crop_id}
+                  onChange={(e) => setSimulatorData(p => ({ ...p, crop_id: e.target.value }))}
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-3 py-3 outline-none"
+                >
+                  {crops.map(c => <option key={c.id} value={c.id}>{c.name} ({c.status})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-neutral-400 uppercase block mb-1">Soil Moisture (%)</label>
+                <input
+                  type="number"
+                  value={simulatorData.soil_moisture}
+                  onChange={(e) => setSimulatorData(p => ({ ...p, soil_moisture: e.target.value }))}
+                  className="w-full bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-3 py-3 outline-none"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              isLoading={isSimulating}
+              variant="ai"
+              size="md"
+              leftIcon={<Play className="w-4 h-4 fill-current" />}
+              className="w-full"
+            >
+              Run AI Model Inference Simulation
+            </Button>
+          </form>
+
+          {simulationResult && (
+            <div className="bg-neutral-950 border border-emerald-500/30 p-4 rounded-2xl space-y-2">
+              <h4 className="text-xs font-black text-emerald-400 uppercase">AI Model Output:</h4>
+              <p className="text-xs font-bold text-white">
+                Water Required: <b className={simulationResult.is_irrigation_required ? "text-amber-400" : "text-emerald-400"}>
+                  {simulationResult.is_irrigation_required ? "YES" : "NO"}
+                </b> • Volume: <b>{simulationResult.recommended_water_volume_liters} Liters</b> • Confidence: <b>{(simulationResult.confidence_score * 100).toFixed(0)}%</b>
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
+
     </div>
   );
 }

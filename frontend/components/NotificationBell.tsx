@@ -26,7 +26,6 @@ export interface Notification {
 }
 
 export const NotificationBell: React.FC = () => {
-  const { t } = useTranslation();
   const { isOnline } = useOfflineCache();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState<number>(0);

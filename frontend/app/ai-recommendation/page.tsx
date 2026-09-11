@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "@/context/LanguageContext";
 import { useRouter } from "next/navigation";
@@ -8,16 +8,19 @@ import Link from "next/link";
 import { api } from "@/services/api";
 import { 
   Brain, 
-  Droplet, 
   TrendingUp, 
   Sparkles,
-  AlertTriangle,
   Lightbulb,
-  CloudRain,
   Mic,
-  ArrowRight,
-  TrendingDown
+  ArrowRight
 } from "lucide-react";
+
+import Button from "@/components/ui/Button";
+import Card, { CardHeader, CardTitle } from "@/components/ui/Card";
+import PageHeader from "@/components/ui/PageHeader";
+import RecommendationCard from "@/components/ui/RecommendationCard";
+import LoadingState from "@/components/ui/LoadingState";
+import ErrorState from "@/components/ui/ErrorState";
 
 interface Farm {
   id: string;
@@ -61,7 +64,6 @@ export default function AIRecommendationPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // State
   const [farms, setFarms] = useState<Farm[]>([]);
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
   const [fields, setFields] = useState<Field[]>([]);
@@ -72,7 +74,6 @@ export default function AIRecommendationPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Farmer Feedback state (TC136)
   const [feedbackForm, setFeedbackForm] = useState<{
     followed_status: "Followed" | "Partially Followed" | "Not Followed";
     reason?: string;
@@ -104,36 +105,41 @@ export default function AIRecommendationPage() {
     }
   };
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (user) {
-      loadFarms();
-    }
-  }, [user]);
-
-  const loadFarms = async () => {
+  const fetchRecommendation = useCallback(async (cropId: string) => {
     setLoading(true);
     try {
-      const data = await api.get<Farm[]>("/farms");
-      setFarms(data);
-      if (data.length > 0) {
-        setSelectedFarm(data[0]);
-        fetchFields(data[0].id);
+      const data = await api.get<Recommendation[]>(`/crops/${cropId}/recommendations`);
+      if (data && data.length > 0) {
+        setRecommendation(data[0]);
       } else {
+        setRecommendation(null);
+      }
+    } catch (err) {
+      setError((err as Error).message || "Failed to fetch AI recommendation");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchCropsAndRecommendation = useCallback(async (fieldId: string) => {
+    try {
+      const cropsData = await api.get<Crop[]>(`/fields/${fieldId}/crops`);
+      setCrops(cropsData);
+      if (cropsData.length > 0) {
+        setSelectedCrop(cropsData[0]);
+        fetchRecommendation(cropsData[0].id);
+      } else {
+        setSelectedCrop(null);
+        setRecommendation(null);
         setLoading(false);
       }
     } catch (err) {
-      setError((err as Error).message || "Failed to load farms");
+      setError((err as Error).message || "Failed to load crops");
       setLoading(false);
     }
-  };
+  }, [fetchRecommendation]);
 
-  const fetchFields = async (farmId: string) => {
+  const fetchFields = useCallback(async (farmId: string) => {
     try {
       const data = await api.get<Field[]>(`/farms/${farmId}/fields`);
       setFields(data);
@@ -151,41 +157,36 @@ export default function AIRecommendationPage() {
       setError((err as Error).message || "Failed to load fields");
       setLoading(false);
     }
-  };
+  }, [fetchCropsAndRecommendation]);
 
-  const fetchCropsAndRecommendation = async (fieldId: string) => {
+  const loadFarms = useCallback(async () => {
+    setLoading(true);
     try {
-      const cropsData = await api.get<Crop[]>(`/fields/${fieldId}/crops`);
-      setCrops(cropsData);
-      if (cropsData.length > 0) {
-        setSelectedCrop(cropsData[0]);
-        fetchRecommendation(cropsData[0].id);
+      const data = await api.get<Farm[]>("/farms");
+      setFarms(data);
+      if (data.length > 0) {
+        setSelectedFarm(data[0]);
+        fetchFields(data[0].id);
       } else {
-        setSelectedCrop(null);
-        setRecommendation(null);
         setLoading(false);
       }
     } catch (err) {
-      setError((err as Error).message || "Failed to load crops");
+      setError((err as Error).message || "Failed to load farms");
       setLoading(false);
     }
-  };
+  }, [fetchFields]);
 
-  const fetchRecommendation = async (cropId: string) => {
-    setLoading(true);
-    try {
-      const data = await api.get<Recommendation[]>(`/crops/${cropId}/recommendations`);
-      if (data && data.length > 0) {
-        setRecommendation(data[0]);
-      } else {
-        setRecommendation(null);
-      }
-    } catch (err) {
-      setError((err as Error).message || "Failed to fetch AI recommendation");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
     }
-  };
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user) {
+      loadFarms();
+    }
+  }, [user, loadFarms]);
 
   const handleFarmChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const farm = farms.find(f => f.id === e.target.value);
@@ -217,218 +218,164 @@ export default function AIRecommendationPage() {
 
   if (authLoading) return null;
 
-  // Visual calculations based on model metrics
   const waterSavedLiters = recommendation 
     ? Math.max(0, 1200 - (recommendation.recommended_water_volume_liters * 10)) 
     : 350;
 
   return (
-    <div className="min-h-screen bg-[#090d0b] text-[#f2f7f4] px-4 py-8 sm:px-6 lg:px-8 pb-24 md:pb-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-neutral-900 pb-6">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-              <Brain className="w-8 h-8 text-emerald-500" />
-              {t("ai_tools.title")}
-            </h1>
-            <p className="text-neutral-450 text-xs mt-1 font-semibold">
-              {t("ai_tools.subtitle")}
-            </p>
-          </div>
+    <div className="min-h-screen bg-[#060a08] text-neutral-100 px-4 py-6 sm:px-6 lg:px-8 pb-24 md:pb-8 max-w-5xl mx-auto space-y-6">
+      
+      <PageHeader
+        title={t("ai_tools.title") || "AgriSmart AI Advice"}
+        subtitle={t("ai_tools.subtitle") || "Actionable predictive irrigation advice generated for your active crop."}
+        icon={<Brain className="w-6 h-6 stroke-[2.5]" />}
+        action={
+          farms.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 bg-neutral-900 border border-neutral-850 p-2 rounded-2xl">
+              <select
+                value={selectedFarm?.id || ""}
+                onChange={handleFarmChange}
+                className="bg-transparent text-xs font-black text-white outline-none cursor-pointer"
+              >
+                {farms.map((f) => (
+                  <option key={f.id} value={f.id} className="bg-neutral-950 text-white">{f.name}</option>
+                ))}
+              </select>
 
-          {/* Selector filters */}
-          {farms.length > 0 && (
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <div className="flex-1 sm:flex-initial">
-                <select
-                  value={selectedFarm?.id || ""}
-                  onChange={handleFarmChange}
-                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
-                >
-                  {farms.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={selectedField?.id || ""}
+                onChange={handleFieldChange}
+                className="bg-transparent text-xs font-black text-emerald-400 outline-none cursor-pointer"
+              >
+                {fields.map((f) => (
+                  <option key={f.id} value={f.id} className="bg-neutral-950 text-white">{f.name}</option>
+                ))}
+              </select>
 
-              <div className="flex-1 sm:flex-initial">
-                <select
-                  value={selectedField?.id || ""}
-                  onChange={handleFieldChange}
-                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
-                >
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 sm:flex-initial">
-                <select
-                  value={selectedCrop?.id || ""}
-                  onChange={handleCropChange}
-                  className="w-full bg-neutral-950 border border-neutral-900 text-xs text-neutral-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/50 font-bold"
-                >
-                  {crops.length === 0 ? (
-                    <option value="">{t("common.no_data")}</option>
-                  ) : (
-                    crops.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))
-                  )}
-                </select>
-              </div>
+              <select
+                value={selectedCrop?.id || ""}
+                onChange={handleCropChange}
+                className="bg-transparent text-xs font-black text-sky-400 outline-none cursor-pointer"
+              >
+                {crops.length === 0 ? (
+                  <option value="">No Crop</option>
+                ) : (
+                  crops.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-neutral-950 text-white">{c.name}</option>
+                  ))
+                )}
+              </select>
             </div>
-          )}
-        </header>
+          ) : undefined
+        }
+      />
 
-        {loading ? (
-          <div className="py-16 flex justify-center">
-            <span className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : !recommendation ? (
-          <div className="glass-panel rounded-3xl p-10 text-center max-w-xl mx-auto space-y-6 shadow-md border border-neutral-900">
-            <div className="text-4xl">🤖</div>
-            <h3 className="text-base font-bold text-white">Awaiting Simulation Logs</h3>
-            <p className="text-neutral-450 text-xs leading-relaxed max-w-sm mx-auto">
-              Telemetry parameters must be recorded to prompt the machine learning engine for crop schedule recommendations.
-            </p>
-            <Link href="/sensors" className="bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-bold px-4 py-2.5 rounded-xl inline-block mt-4">
-              Access Telemetry Simulator
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {error && <ErrorState message={error} onRetry={loadFarms} />}
+
+      {loading ? (
+        <LoadingState message="Calculating AI irrigation decision..." />
+      ) : !recommendation ? (
+        <Card variant="glass" padding="lg" className="text-center max-w-xl mx-auto py-10 space-y-4">
+          <Brain className="w-12 h-12 text-emerald-400 mx-auto" />
+          <h3 className="text-base font-black text-white">No Telemetry Recorded Yet</h3>
+          <p className="text-xs text-neutral-400 font-semibold max-w-sm mx-auto leading-relaxed">
+            Record soil telemetry from your field sensors to allow AgriSmart AI to compute crop water requirements.
+          </p>
+          <Link href="/sensors">
+            <Button variant="primary" size="md">
+              Go to Telemetry Sensors
+            </Button>
+          </Link>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <div className="lg:col-span-2 space-y-6">
             
-            {/* Primary Recommendation Card */}
-            <div className="glass-panel rounded-3xl p-6 shadow-lg border border-neutral-900 md:col-span-2 space-y-6">
+            {/* Hero Action Recommendation Card */}
+            <RecommendationCard
+              decision={
+                recommendation.is_irrigation_required 
+                  ? "Water your field today" 
+                  : "Do not irrigate now"
+              }
+              isIrrigationNeeded={recommendation.is_irrigation_required}
+              soilMoisture={recommendation.moisture_level}
+              rainProbability={recommendation.features_snapshot?.rain_probability}
+              reason={
+                recommendation.recommendation_text || (
+                  recommendation.is_irrigation_required 
+                    ? "Soil moisture level is low and weather is dry. Irrigation is recommended for healthy crop growth." 
+                    : "Soil moisture is currently sufficient and rain is expected in your region."
+                )
+              }
+              confidence="High"
+              nextAction={recommendation.is_irrigation_required ? "Irrigate for 20 mins early morning" : "Check moisture again tomorrow"}
+              onActionClick={triggerVoiceAssistant}
+              actionText="🎙 Ask Voice Assistant About Recommendation"
+            />
+
+            {/* Weather & Soil Snapshots */}
+            <Card variant="glass" padding="lg" className="space-y-4">
+              <CardHeader>
+                <CardTitle>
+                  <Lightbulb className="w-4.5 h-4.5 text-amber-400" />
+                  Environmental Data Rationale
+                </CardTitle>
+              </CardHeader>
               
-              <div className="flex justify-between items-start border-b border-neutral-900 pb-4">
-                <div>
-                  <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider block">Target crop</span>
-                  <h3 className="text-lg font-black text-white mt-0.5">{selectedCrop?.name || "Crop"}</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="p-3 bg-neutral-900/60 border border-neutral-850 rounded-2xl">
+                  <span className="text-[9px] text-neutral-400 font-bold uppercase block">Soil Moisture</span>
+                  <span className="text-base font-black text-emerald-400 mt-1 block">{(recommendation.features_snapshot?.soil_moisture || 35.0).toFixed(0)}%</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider block">ML Confidence</span>
-                  <span className="text-base font-black text-emerald-450">{(recommendation.confidence_score * 100).toFixed(0)}%</span>
+                <div className="p-3 bg-neutral-900/60 border border-neutral-850 rounded-2xl">
+                  <span className="text-[9px] text-neutral-400 font-bold uppercase block">Temperature</span>
+                  <span className="text-base font-black text-amber-400 mt-1 block">{recommendation.features_snapshot?.temperature?.toFixed(1) || 28.5}°C</span>
                 </div>
-              </div>
-
-              {/* Status Box */}
-              <div className={`p-5 rounded-2xl border ${
-                recommendation.is_irrigation_required
-                  ? "bg-rose-500/5 border-rose-500/20 text-rose-300"
-                  : "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"
-              }`}>
-                <span className="text-[9px] font-black uppercase tracking-widest block">AI Decision</span>
-                <h4 className="text-lg font-extrabold mt-1">
-                  {recommendation.is_irrigation_required 
-                    ? "⚠️ Irrigation Recommended (Irrigate Now)" 
-                    : "🟢 Moisture Satisfactory (Hold Water)"}
-                </h4>
-                <p className="text-xs mt-1.5 opacity-90 leading-relaxed">
-                  Based on sequenced soil readings and 24h cloud predictions, the Random Forest model recommends {recommendation.is_irrigation_required ? "applying water" : "skipping irrigation"}.
-                </p>
-              </div>
-
-              {recommendation.is_irrigation_required && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-neutral-950/60 border border-neutral-900 p-4 rounded-2xl flex items-center gap-3">
-                    <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
-                      <Droplet className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-neutral-500 font-bold uppercase block">Water Volume</span>
-                      <span className="text-lg font-black text-white block mt-0.5">{recommendation.recommended_water_volume_liters} Liters</span>
-                      <span className="text-[8px] text-neutral-500 block">per sq. meter</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-neutral-950/60 border border-neutral-900 p-4 rounded-2xl flex items-center gap-3">
-                    <div className="p-3 bg-sky-500/10 text-sky-400 rounded-xl">
-                      <CloudRain className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-neutral-500 font-bold uppercase block">Best Execution Time</span>
-                      <span className="text-sm font-bold text-neutral-200 block mt-1.5">
-                        {recommendation.best_irrigation_time 
-                          ? new Date(recommendation.best_irrigation_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                          : "Early Morning"}
-                      </span>
-                      <span className="text-[8px] text-neutral-500 block">evaporation optimized</span>
-                    </div>
-                  </div>
+                <div className="p-3 bg-neutral-900/60 border border-neutral-850 rounded-2xl">
+                  <span className="text-[9px] text-neutral-400 font-bold uppercase block">Rain Forecast</span>
+                  <span className="text-base font-black text-sky-400 mt-1 block">{((recommendation.features_snapshot?.rain_probability || 0.1) * 100).toFixed(0)}%</span>
                 </div>
-              )}
-
-              {/* Climate Reasoning Checklist */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Lightbulb className="w-4 h-4 text-emerald-400" />
-                  Meteorological Reasoning
-                </h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-neutral-350">
-                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
-                    <span className="text-xs">🌡️</span>
-                    <span>Temperature: <strong className="text-white">{recommendation.features_snapshot?.temperature?.toFixed(1) || 28.5}°C</strong></span>
-                  </div>
-                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
-                    <span className="text-xs">💦</span>
-                    <span>Soil Moisture: <strong className="text-white">{(recommendation.features_snapshot?.soil_moisture || 35.0).toFixed(0)}%</strong></span>
-                  </div>
-                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
-                    <span className="text-xs">☁️</span>
-                    <span>Rain Chance: <strong className="text-white">{((recommendation.features_snapshot?.rain_probability || 0.1) * 100).toFixed(0)}%</strong></span>
-                  </div>
-                  <div className="bg-neutral-950/30 border border-neutral-900 p-3.5 rounded-xl flex items-center gap-2">
-                    <span className="text-xs">💨</span>
-                    <span>Wind Speed: <strong className="text-white">{recommendation.features_snapshot?.wind_speed?.toFixed(1) || 8.2} km/h</strong></span>
-                  </div>
+                <div className="p-3 bg-neutral-900/60 border border-neutral-850 rounded-2xl">
+                  <span className="text-[9px] text-neutral-400 font-bold uppercase block">Wind Velocity</span>
+                  <span className="text-base font-black text-neutral-200 mt-1 block">{recommendation.features_snapshot?.wind_speed?.toFixed(1) || 8.2} km/h</span>
                 </div>
               </div>
+            </Card>
 
-              {/* Farmer AI Feedback Submission Form (TC136) */}
-              <div className="border-t border-neutral-900 pt-5 mt-5 space-y-3">
-                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  {t("feedback.title") || "Recommendation Feedback"}
-                </h4>
-                <p className="text-[11px] text-neutral-400 font-medium">
-                  {t("feedback.status") || "Did you follow this AI recommendation?"}
-                </p>
+            {/* Farmer Feedback Section */}
+            <Card variant="glass" padding="lg" className="space-y-4">
+              <CardHeader>
+                <CardTitle>
+                  <Sparkles className="w-4.5 h-4.5 text-emerald-400" />
+                  {t("feedback.title") || "Did you follow this recommendation?"}
+                </CardTitle>
+              </CardHeader>
+              
+              <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   {(["Followed", "Partially Followed", "Not Followed"] as const).map((statusVal) => {
-                    const keyMap = {
-                      "Followed": "feedback.followed",
-                      "Partially Followed": "feedback.partially_followed",
-                      "Not Followed": "feedback.not_followed"
-                    };
-                    const label = t(keyMap[statusVal]) || statusVal;
                     const isSelected = feedbackForm.followed_status === statusVal;
                     return (
                       <button
                         key={statusVal}
                         type="button"
                         onClick={() => setFeedbackForm(prev => ({ ...prev, followed_status: statusVal }))}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        className={`px-4 py-2 rounded-2xl text-xs font-black transition-all border cursor-pointer touch-target ${
                           isSelected
-                            ? "bg-emerald-500 text-neutral-950 border-emerald-400 font-extrabold shadow"
-                            : "bg-neutral-950 border-neutral-900 text-neutral-400 hover:text-white"
+                            ? "bg-emerald-500 text-neutral-950 border-emerald-400 shadow-md"
+                            : "bg-neutral-900 text-neutral-300 border-neutral-800 hover:text-white"
                         }`}
                       >
-                        {label}
+                        {statusVal}
                       </button>
                     );
                   })}
                 </div>
                 
                 {feedbackMsg && (
-                  <p className="text-xs text-emerald-400 font-bold flex items-center gap-1 pt-1">
-                    ✓ {feedbackMsg}
-                  </p>
+                  <p className="text-xs text-emerald-400 font-bold">✓ {feedbackMsg}</p>
                 )}
 
                 <div className="flex gap-2 pt-1">
@@ -436,66 +383,57 @@ export default function AIRecommendationPage() {
                     type="text"
                     value={feedbackForm.explanation}
                     onChange={(e) => setFeedbackForm(prev => ({ ...prev, explanation: e.target.value }))}
-                    placeholder={t("feedback.reason") || "Reason / Notes (Optional)"}
-                    className="flex-1 bg-neutral-950 border border-neutral-900 text-xs text-neutral-200 rounded-xl px-3.5 py-2 outline-none focus:border-emerald-500/50"
+                    placeholder="Add feedback notes (Optional)..."
+                    className="flex-1 bg-neutral-950 border border-neutral-850 text-xs font-bold text-white rounded-2xl px-4 py-3 outline-none min-h-[44px]"
                   />
-                  <button
+                  <Button
                     type="button"
                     onClick={handleFeedbackSubmit}
-                    disabled={isSubmittingFeedback}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow whitespace-nowrap"
+                    isLoading={isSubmittingFeedback}
+                    variant="primary"
+                    size="sm"
                   >
-                    {isSubmittingFeedback ? t("common.loading") : t("feedback.submit")}
-                  </button>
+                    Submit Feedback
+                  </Button>
                 </div>
               </div>
-
-            </div>
-
-            {/* Side insights metrics */}
-            <div className="space-y-6">
-              
-              {/* Water Saving Estimates */}
-              <div className="glass-panel rounded-3xl p-6 shadow-md border border-neutral-900 space-y-4">
-                <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  Water Conservation
-                </h3>
-                
-                <div className="space-y-2 text-center py-2">
-                  <span className="text-3xl font-black text-emerald-400 block">{waterSavedLiters.toLocaleString()} Liters</span>
-                  <p className="text-[10px] text-neutral-400 max-w-[200px] mx-auto leading-normal">
-                    Estimated water saved this week by delaying schedules in response to soil telemetry updates.
-                  </p>
-                </div>
-              </div>
-
-              {/* Regional speech translation trigger */}
-              <div className="glass-panel rounded-3xl p-6 shadow-md border border-neutral-900 text-center space-y-4 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-500/10 to-transparent blur-lg rounded-bl-3xl" />
-                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/25">
-                  <Mic className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Listen in Local Language</h3>
-                  <p className="text-[10px] text-neutral-450 mt-1 max-w-[180px] mx-auto leading-normal">
-                    Query recommendations directly via voice speech translation (Hindi & Kannada).
-                  </p>
-                </div>
-                <button
-                  onClick={triggerVoiceAssistant}
-                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-neutral-950 font-bold text-xs uppercase tracking-wider py-2.5 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 shadow-md active:scale-98"
-                >
-                  Ask Assistant
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-            </div>
+            </Card>
 
           </div>
-        )}
-      </div>
+
+          {/* Side Summary Cards */}
+          <div className="space-y-4">
+            <Card variant="glass" padding="md" className="space-y-3">
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                Water Conserved
+              </span>
+              <span className="text-3xl font-black text-emerald-400 block">{waterSavedLiters.toLocaleString()} Liters</span>
+              <p className="text-xs text-neutral-400 font-semibold leading-relaxed">
+                Saved this week by skipping unneeded watering based on AI soil moisture predictions.
+              </p>
+            </Card>
+
+            <Card variant="glass" padding="md" className="space-y-3 text-center">
+              <Mic className="w-8 h-8 text-emerald-400 mx-auto" />
+              <h4 className="text-sm font-black text-white">Ask in Regional Language</h4>
+              <p className="text-xs text-neutral-400 font-semibold">
+                Tap below to ask AgriSmart voice questions in Telugu, Hindi, Kannada, and more.
+              </p>
+              <Button
+                variant="ai"
+                size="md"
+                className="w-full"
+                onClick={triggerVoiceAssistant}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                Ask Voice Assistant
+              </Button>
+            </Card>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
