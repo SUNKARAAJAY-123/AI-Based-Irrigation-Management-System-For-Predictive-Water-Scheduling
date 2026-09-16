@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
+from pydantic import ConfigDict
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
@@ -1439,8 +1440,7 @@ class AlertEventResponse(BaseModel):
     created_at: datetime
     resolved_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 async def evaluate_and_dispatch(db: Session, field_id: str):
     try:
@@ -2281,7 +2281,7 @@ def subscribe_push(
 
 @router.get("/farmer/reports")
 async def get_field_reports(
-    format: str = Query("csv", regex="^(csv|pdf)$"),
+    format: str = Query("csv", pattern="^(csv|pdf)$"),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

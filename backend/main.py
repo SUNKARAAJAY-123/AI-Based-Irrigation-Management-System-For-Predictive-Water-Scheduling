@@ -119,3 +119,10 @@ def read_root():
         "message": "AI-Based Irrigation Management System API Gateway active.",
         "docs_url": "/docs"
     }
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "environment": settings.backend_env
+    }

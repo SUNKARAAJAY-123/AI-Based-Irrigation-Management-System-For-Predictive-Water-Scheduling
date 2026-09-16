@@ -24,6 +24,10 @@ DATABASE_URL = os.getenv(
     f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 )
 
+if ("supabase" in DATABASE_URL.lower() or os.getenv("BACKEND_ENV") == "production") and "sslmode" not in DATABASE_URL and "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
+    delimiter = "&" if "?" in DATABASE_URL else "?"
+    DATABASE_URL = f"{DATABASE_URL}{delimiter}sslmode=require"
+
 # Initialize Engine with Pooling settings
 engine = create_engine(
     DATABASE_URL,

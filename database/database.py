@@ -12,6 +12,10 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:postgres@localhost:5432/ai_irrigation_db"
 )
 
+if ("supabase" in DATABASE_URL.lower() or os.getenv("BACKEND_ENV") == "production") and "sslmode" not in DATABASE_URL and "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
+    delimiter = "&" if "?" in DATABASE_URL else "?"
+    DATABASE_URL = f"{DATABASE_URL}{delimiter}sslmode=require"
+
 # Setup Engine
 engine = create_engine(
     DATABASE_URL,

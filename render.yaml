@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ai-irrigation-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: BACKEND_ENV
+        value: production
+      - key: BACKEND_DEBUG
+        value: "false"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://your-vercel-app.vercel.app
+      - key: DATABASE_URL
+        sync: false

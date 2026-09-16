@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
@@ -60,8 +60,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Farm Schemas
@@ -83,8 +82,7 @@ class FarmResponse(BaseModel):
     soil_type: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Field Schemas
@@ -103,8 +101,7 @@ class FieldResponse(BaseModel):
     soil_type: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Crop Schemas
@@ -133,8 +130,7 @@ class CropResponse(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Sensor Schemas
@@ -152,8 +148,7 @@ class SensorResponse(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Telemetry Schemas
@@ -184,8 +179,7 @@ class TelemetryResponse(BaseModel):
     ambient_temperature: Optional[float]
     ambient_humidity: Optional[float]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Recommendation Schemas
@@ -204,8 +198,7 @@ class RecommendationResponse(BaseModel):
     confidence_score: float
     features_snapshot: Optional[Dict[str, Any]]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------------------------------------------------------------
 # Weather Schemas
@@ -273,8 +266,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime
     is_read: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ------------------------------------------------------------------------------
@@ -416,8 +408,7 @@ class FarmerFeedbackResponse(BaseModel):
     explanation: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ------------------------------------------------------------------------------

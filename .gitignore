@@ -48,13 +48,16 @@ alembic/versions/*.pyc
 # Machine Learning
 # ===========================
 ml/models/*.h5
-ml/models/*.pkl
 ml/models/*.pt
 ml/models/*.onnx
 ml/models/*.pb
-ml/models/**/*.pkl
 ml/models/**/*.keras
 ml/models/**/*.h5
+# Keep ML model artifacts tracked for cloud deployment
+!ml/models/*.pkl
+!ml/models/*.json
+!ml/*.pkl
+!ml/*.json
 
 
 data/
