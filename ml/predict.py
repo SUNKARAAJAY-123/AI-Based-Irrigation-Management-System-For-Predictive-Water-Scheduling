@@ -76,20 +76,26 @@ def load_preprocessing_artifacts() -> dict:
         logger.error(f"Error loading preprocessing artifacts: {e}")
     return {}
 
+from pathlib import Path
+
 def run_training_if_missing():
     """
     Auto-train models if missing on startup.
+    Checks availability of pre-trained models. If classical ML models exist, avoid unnecessary auto-training.
     """
     rf_pkl = os.path.exists(os.path.join(MODELS_DIR, "random_forest", "model.pkl"))
     gb_pkl = os.path.exists(os.path.join(MODELS_DIR, "gradient_boosting", "model.pkl"))
     xgb_pkl = os.path.exists(os.path.join(MODELS_DIR, "xgboost", "model.pkl"))
-    lstm_keras = os.path.exists(os.path.join(MODELS_DIR, "lstm", "model.keras"))
+    has_classical_models = (rf_pkl and gb_pkl and xgb_pkl) or os.path.exists(os.path.join(MODELS_DIR, "irrigation_model.pkl"))
     
-    if not (rf_pkl and gb_pkl and xgb_pkl and lstm_keras):
-        logger.info("ML model files are missing. Running train.py to generate models...")
+    if not has_classical_models:
+        logger.info("Primary ML model files are missing. Running train.py to generate models...")
         try:
             from ml.train import train_and_compare
-            train_and_compare()
+            project_root = Path(__file__).resolve().parent.parent
+            dataset_path = str(project_root / "datasets" / "irrigation_master_dataset_v1.csv")
+            logger.info("Auto-training dataset path: %s", dataset_path)
+            train_and_compare(dataset_path=dataset_path)
             logger.info("Auto-training finished successfully.")
         except Exception as e:
             logger.error(f"Auto-training failed: {e}")

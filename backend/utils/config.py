@@ -75,14 +75,30 @@ class Settings(BaseSettings):
     )
 
     def get_db_url(self) -> str:
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        url = self.DATABASE_URL
+        if not url:
+            url = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        is_external = "localhost" not in url and "127.0.0.1" not in url
+        if (self.BACKEND_ENV == "production" or "supabase" in url.lower() or is_external) and "sslmode" not in url:
+            delimiter = "&" if "?" in url else "?"
+            url = f"{url}{delimiter}sslmode=require"
+        return url
 
     def get_async_db_url(self) -> str:
-        if self.ASYNC_DATABASE_URL:
-            return self.ASYNC_DATABASE_URL
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        url = self.ASYNC_DATABASE_URL
+        if not url:
+            url = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        is_external = "localhost" not in url and "127.0.0.1" not in url
+        if (self.BACKEND_ENV == "production" or "supabase" in url.lower() or is_external) and "sslmode" not in url:
+            delimiter = "&" if "?" in url else "?"
+            url = f"{url}{delimiter}sslmode=require"
+        return url
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

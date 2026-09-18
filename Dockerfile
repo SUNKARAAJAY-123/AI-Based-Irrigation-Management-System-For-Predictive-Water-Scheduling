@@ -19,10 +19,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code and models
+# Copy source code, datasets, and models
 COPY backend/ ./backend/
 COPY database/ ./database/
 COPY ml/ ./ml/
+COPY datasets/ ./datasets/
 
 # Expose port
 EXPOSE 8000

@@ -28,6 +28,7 @@ async def scheduled_checker_loop():
     logger.info(f"Background scheduled notification checker active. Run interval: {interval}s")
     
     while True:
+        db = None
         try:
             logger.info("Scheduled notification check cycle started.")
             stats = {
@@ -53,7 +54,9 @@ async def scheduled_checker_loop():
                         logger.error(f"Error checking field {field.id} in scheduled loop: {field_err}")
                         stats["errors"] += 1
             finally:
-                db.close()
+                if db:
+                    db.close()
+                    db = None
             
             # Print structured check cycle log as per specification
             logger.info(
@@ -68,6 +71,11 @@ async def scheduled_checker_loop():
             
         except Exception as e:
             logger.error(f"Unhandled error in scheduled notification checker: {e}")
+            if db:
+                try:
+                    db.close()
+                except Exception:
+                    pass
             
         await asyncio.sleep(interval)
 

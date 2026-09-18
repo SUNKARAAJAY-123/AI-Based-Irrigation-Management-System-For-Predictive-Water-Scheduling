@@ -1,25 +1,54 @@
 import os
+import logging
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
 
+logger = logging.getLogger("DatabaseConfig")
+
 # Load environment variables
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../.env"))
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/ai_irrigation_db"
-)
+def resolve_database_url() -> str:
+    url = os.getenv("DATABASE_URL")
+    backend_env = os.getenv("BACKEND_ENV", "development").lower()
+    
+    if not url:
+        if backend_env == "production":
+            logger.warning(
+                "CRITICAL WARNING: DATABASE_URL environment variable is not configured in Render production! "
+                "Falling back to local PostgreSQL connection string."
+            )
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db_name = os.getenv("POSTGRES_DB", "ai_irrigation_db")
+        url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 
-if ("supabase" in DATABASE_URL.lower() or os.getenv("BACKEND_ENV") == "production") and "sslmode" not in DATABASE_URL and "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
-    delimiter = "&" if "?" in DATABASE_URL else "?"
-    DATABASE_URL = f"{DATABASE_URL}{delimiter}sslmode=require"
+    # Fix SQLAlchemy 2.0 dialect prefix
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    # Automatically attach sslmode=require for production/external database connections if not specified
+    is_external = "localhost" not in url and "127.0.0.1" not in url
+    if (backend_env == "production" or "supabase" in url.lower() or is_external) and "sslmode" not in url:
+        delimiter = "&" if "?" in url else "?"
+        url = f"{url}{delimiter}sslmode=require"
+
+    return url
+
+DATABASE_URL = resolve_database_url()
 
 # Setup Engine
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
     connect_args={"client_encoding": "utf8"}
 )
 

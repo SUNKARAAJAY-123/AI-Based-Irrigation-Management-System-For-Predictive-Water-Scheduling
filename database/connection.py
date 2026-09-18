@@ -12,21 +12,31 @@ logger = logging.getLogger("DatabaseConnection")
 # Load environment variables from .env in workspace root
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../.env"))
 
-POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "ai_irrigation_db")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+def resolve_database_url() -> str:
+    url = os.getenv("DATABASE_URL")
+    backend_env = os.getenv("BACKEND_ENV", "development").lower()
 
-# Resolve DB URL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-)
+    if not url:
+        if backend_env == "production":
+            logger.warning("CRITICAL WARNING: DATABASE_URL is not set in production!")
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db_name = os.getenv("POSTGRES_DB", "ai_irrigation_db")
+        url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 
-if ("supabase" in DATABASE_URL.lower() or os.getenv("BACKEND_ENV") == "production") and "sslmode" not in DATABASE_URL and "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
-    delimiter = "&" if "?" in DATABASE_URL else "?"
-    DATABASE_URL = f"{DATABASE_URL}{delimiter}sslmode=require"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    is_external = "localhost" not in url and "127.0.0.1" not in url
+    if (backend_env == "production" or "supabase" in url.lower() or is_external) and "sslmode" not in url:
+        delimiter = "&" if "?" in url else "?"
+        url = f"{url}{delimiter}sslmode=require"
+
+    return url
+
+DATABASE_URL = resolve_database_url()
 
 # Initialize Engine with Pooling settings
 engine = create_engine(

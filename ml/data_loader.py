@@ -1,26 +1,57 @@
 import os
+from pathlib import Path
 import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
 
-def load_dataset(filepath: str) -> pd.DataFrame:
+def load_dataset(filepath: str = None) -> pd.DataFrame:
     """
     Loads raw CSV data from the specified path.
-    Resolves relative paths relative to the project root.
+    Resolves relative paths relative to the project root using pathlib.Path.
     """
-    # Resolve project-relative paths
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    if not os.path.isabs(filepath):
-        resolved_path = os.path.abspath(os.path.join(project_root, filepath))
-    else:
-        resolved_path = filepath
-
-    if not os.path.exists(resolved_path):
-        logger.error(f"Dataset path not found: {resolved_path}")
-        raise FileNotFoundError(f"Dataset path not found: {resolved_path}")
+    ml_dir = Path(__file__).resolve().parent
+    project_root = ml_dir.parent
     
-    logger.info(f"Loading raw dataset from {resolved_path}...")
+    filename = Path(filepath).name if filepath else "irrigation_master_dataset_v1.csv"
+    
+    candidates = []
+    if filepath:
+        candidates.append(Path(filepath))
+        candidates.append(project_root / filepath)
+        candidates.append(Path.cwd() / filepath)
+    
+    candidates.extend([
+        project_root / "datasets" / filename,
+        project_root / "datasets" / "irrigation_master_dataset_v1.csv",
+        Path.cwd() / "datasets" / filename,
+        Path.cwd() / "datasets" / "irrigation_master_dataset_v1.csv",
+        Path("/app/datasets") / filename,
+        Path("/app/datasets/irrigation_master_dataset_v1.csv"),
+    ])
+
+    resolved_path = None
+    for candidate in candidates:
+        if candidate and candidate.exists() and candidate.is_file():
+            resolved_path = candidate.resolve()
+            break
+
+    if not resolved_path:
+        candidate_strs = [str(c) for c in candidates if c]
+        logger.error(
+            f"Dataset path not found: {filepath}. Project Root: {project_root}. Candidate paths checked: {candidate_strs}"
+        )
+        raise FileNotFoundError(f"Dataset path not found: {filepath} (Project Root: {project_root})")
+    
+    logger.info("Dataset path: %s", resolved_path)
+    logger.info("Dataset exists: %s", resolved_path.exists())
+    try:
+        file_size_bytes = resolved_path.stat().st_size
+        logger.info("Dataset file size: %d bytes", file_size_bytes)
+    except Exception as e:
+        logger.warning("Could not read dataset size: %s", e)
+
+    logger.info(f"Loading raw dataset from resolved path: {resolved_path}...")
     try:
         df = pd.read_csv(resolved_path)
         logger.info(f"Successfully loaded dataset with shape {df.shape}")

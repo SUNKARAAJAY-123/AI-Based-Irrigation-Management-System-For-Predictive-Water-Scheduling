@@ -28,8 +28,16 @@ load_dotenv(dotenv_path=os.path.abspath(os.path.join(os.path.dirname(__file__), 
 from database.models import Base
 target_metadata = Base.metadata
 
-# Set sqlalchemy.url from env
+# Set sqlalchemy.url from env with proper URL normalization
 db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/ai_irrigation_db")
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+is_external = "localhost" not in db_url and "127.0.0.1" not in db_url
+if (os.getenv("BACKEND_ENV") == "production" or "supabase" in db_url.lower() or is_external) and "sslmode" not in db_url:
+    delimiter = "&" if "?" in db_url else "?"
+    db_url = f"{db_url}{delimiter}sslmode=require"
+
 config.set_main_option("sqlalchemy.url", db_url)
 
 
