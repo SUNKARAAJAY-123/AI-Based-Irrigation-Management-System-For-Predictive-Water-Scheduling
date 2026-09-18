@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
     ASYNC_DATABASE_URL: Optional[str] = None
 
+    # Supabase Settings (Optional)
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+
     # Browser origins allowed to call the API. Use a comma-separated list.
     CORS_ORIGINS: str = "http://localhost:3000"
 
