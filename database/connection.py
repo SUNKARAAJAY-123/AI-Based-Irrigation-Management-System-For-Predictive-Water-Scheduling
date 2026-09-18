@@ -51,7 +51,7 @@ engine = create_engine(
 
 def verify_database_connection(retries: int = 5, delay: float = 2.0) -> bool:
     """Verifies that the database is up and reachable, retrying if necessary."""
-    logger.info(f"Attempting to connect to PostgreSQL at {POSTGRES_HOST}:{POSTGRES_PORT}...")
+    logger.info("Attempting to connect to PostgreSQL database...")
     
     for attempt in range(1, retries + 1):
         try:
