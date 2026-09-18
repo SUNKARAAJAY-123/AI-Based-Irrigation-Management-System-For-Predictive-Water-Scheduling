@@ -132,5 +132,5 @@ def read_root():
 def health_check():
     return {
         "status": "healthy",
-        "environment": settings.backend_env
+        "environment": settings.BACKEND_ENV
     }
