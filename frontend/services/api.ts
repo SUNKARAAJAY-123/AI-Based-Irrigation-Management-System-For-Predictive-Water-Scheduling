@@ -1,8 +1,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Primary API Base URL: Read environment variable with fallback to production Render backend
-const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://ai-based-irrigation-management-system.onrender.com";
-const BASE_URL = RAW_BASE_URL.endsWith("/") ? RAW_BASE_URL.slice(0, -1) : RAW_BASE_URL;
+const FALLBACK_PRODUCTION_URL = "https://ai-based-irrigation-management-system.onrender.com";
+
+/**
+ * Dynamically resolves the active API Base URL.
+ * Automatically overrides to production Render backend if running in a non-localhost browser environment
+ * (e.g. Vercel deployments) even if the JS bundle was compiled with a localhost fallback.
+ */
+function getApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const isLocalhost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.endsWith(".local");
+
+    // If running in browser on a production/Vercel domain but envUrl is missing or points to localhost
+    if (!isLocalhost && (!envUrl || envUrl.includes("localhost") || envUrl.includes("127.0.0.1"))) {
+      return FALLBACK_PRODUCTION_URL;
+    }
+  }
+
+  const activeUrl = envUrl || FALLBACK_PRODUCTION_URL;
+  return activeUrl.endsWith("/") ? activeUrl.slice(0, -1) : activeUrl;
+}
 
 const MAX_RETRIES = 3;
 const COLD_START_TIMEOUT_MS = 45000; // 45s timeout per attempt to accommodate Render container cold-start
@@ -28,8 +52,9 @@ class ApiClient {
    * Constructs a clean, absolute URL without duplicate or missing slashes.
    */
   private buildUrl(endpoint: string): string {
+    const baseUrl = getApiBaseUrl();
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    return `${BASE_URL}${cleanEndpoint}`;
+    return `${baseUrl}${cleanEndpoint}`;
   }
 
   /**
@@ -155,7 +180,7 @@ class ApiClient {
   }
 
   getBaseUrl(): string {
-    return BASE_URL;
+    return getApiBaseUrl();
   }
 
   async getBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
