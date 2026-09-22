@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+
+// Primary API Base URL: Read environment variable with fallback to production Render backend
+const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://ai-based-irrigation-management-system.onrender.com";
+const BASE_URL = RAW_BASE_URL.endsWith("/") ? RAW_BASE_URL.slice(0, -1) : RAW_BASE_URL;
+
+const MAX_RETRIES = 3;
+const COLD_START_TIMEOUT_MS = 45000; // 45s timeout per attempt to accommodate Render container cold-start
 
 class ApiClient {
   private getHeaders(): HeadersInit {
@@ -18,45 +24,102 @@ class ApiClient {
     return headers;
   }
 
-  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const cleanBaseUrl = BASE_URL.endsWith("/") ? BASE_URL.slice(0, -1) : BASE_URL;
+  /**
+   * Constructs a clean, absolute URL without duplicate or missing slashes.
+   */
+  private buildUrl(endpoint: string): string {
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    const url = `${cleanBaseUrl}${cleanEndpoint}`;
+    return `${BASE_URL}${cleanEndpoint}`;
+  }
+
+  /**
+   * Primary request executor with cold-start retry handling for Render free tier.
+   */
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const url = this.buildUrl(endpoint);
     const headers = { ...this.getHeaders(), ...options.headers };
-    const config = { ...options, headers };
 
-    try {
-      const response = await fetch(url, config);
-      
-      if (response.status === 401) {
-        // Clear token on unauthorized and dispatch global auth event
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("auth_token");
-          window.dispatchEvent(new CustomEvent("unauthorized"));
-        }
-      }
-      
-      if (!response.ok) {
-        let errMsg = "An error occurred";
-        try {
-          const errData = await response.json();
-          errMsg = errData.detail || errMsg;
-        } catch {
-          errMsg = await response.text();
-        }
-        throw new Error(errMsg);
-      }
-      
-      // Handle empty responses or delete requests
-      if (response.status === 204) {
-        return {} as T;
-      }
+    let lastError: Error | null = null;
 
-      return await response.json() as T;
-    } catch (error) {
-      console.error(`API Request failed on ${endpoint}:`, error);
-      throw error;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), COLD_START_TIMEOUT_MS);
+
+      try {
+        const config: RequestInit = {
+          ...options,
+          headers,
+          signal: controller.signal,
+        };
+
+        const response = await fetch(url, config);
+        clearTimeout(timeoutId);
+
+        if (response.status === 401) {
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("auth_token");
+            window.dispatchEvent(new CustomEvent("unauthorized"));
+          }
+        }
+
+        // Retry on 502/503/504 server spin-up codes if retries remain
+        if ([502, 503, 504].includes(response.status) && attempt < MAX_RETRIES) {
+          this.notifyColdStart(attempt);
+          await this.delay(attempt * 2500);
+          continue;
+        }
+
+        if (!response.ok) {
+          let errMsg = `Request failed with status ${response.status}`;
+          try {
+            const errData = await response.json();
+            errMsg = errData.detail || errMsg;
+          } catch {
+            errMsg = await response.text();
+          }
+          throw new Error(errMsg);
+        }
+
+        if (response.status === 204) {
+          return {} as T;
+        }
+
+        return (await response.json()) as T;
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        lastError = error;
+
+        // Check if error is network failure or timeout (likely Render cold-start spin-down)
+        const isNetworkOrTimeout =
+          error.name === "AbortError" ||
+          error.name === "TypeError" ||
+          error.message?.includes("Failed to fetch");
+
+        if (isNetworkOrTimeout && attempt < MAX_RETRIES) {
+          this.notifyColdStart(attempt);
+          await this.delay(attempt * 2500);
+          continue;
+        }
+
+        throw error;
+      }
     }
+
+    throw lastError || new Error(`API Request to ${endpoint} failed after ${MAX_RETRIES} attempts.`);
+  }
+
+  private notifyColdStart(attempt: number): void {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("server-waking", {
+          detail: { attempt, message: "Backend server is spinning up. Retrying..." },
+        })
+      );
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   get<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -92,15 +155,13 @@ class ApiClient {
   }
 
   getBaseUrl(): string {
-    return BASE_URL.endsWith("/") ? BASE_URL.slice(0, -1) : BASE_URL;
+    return BASE_URL;
   }
 
   async getBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
-    const cleanBaseUrl = this.getBaseUrl();
-    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-    const url = `${cleanBaseUrl}${cleanEndpoint}`;
+    const url = this.buildUrl(endpoint);
     const headers = { ...this.getHeaders(), ...options.headers };
-    
+
     const response = await fetch(url, { ...options, headers, method: "GET" });
     if (!response.ok) {
       throw new Error(`Failed to fetch blob from ${endpoint}: ${response.statusText}`);
@@ -111,4 +172,3 @@ class ApiClient {
 
 export const api = new ApiClient();
 export default api;
-
