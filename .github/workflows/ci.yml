@@ -1,0 +1,65 @@
+name: CI / CD Security & Test Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-test:
+    name: Run Backend Security & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-render.txt pytest pytest-asyncio
+
+      - name: Run Pytest Integration Suite
+        env:
+          JWT_SECRET_KEY: "ci_test_super_secret_jwt_key_random_32_bytes_string"
+          POSTGRES_USER: "postgres"
+          POSTGRES_PASSWORD: "postgres"
+          POSTGRES_DB: "ai_irrigation_db"
+          POSTGRES_HOST: "localhost"
+          POSTGRES_PORT: "5432"
+          DATABASE_URL: "postgresql://postgres:SUNKARAAJAY@db.lhqajbloejieotxjrula.supabase.co:5432/postgres?sslmode=require"
+          BACKEND_ENV: "development"
+        run: |
+          pytest backend/tests/test_integration.py
+
+  frontend-build:
+    name: Build Frontend & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci || npm install
+
+      - name: Build Next.js Application
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: "https://ai-based-irrigation-management-system.onrender.com"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXT_PUBLIC_ENABLE_PWA: "true"
+        run: npm run build
