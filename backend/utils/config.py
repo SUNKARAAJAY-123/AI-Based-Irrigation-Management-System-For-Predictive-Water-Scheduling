@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
 
     # Browser origins allowed to call the API. Use a comma-separated list.
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://ai-based-irrigation-management-system-for-predictive-jnj129cbo.vercel.app"
 
     # External APIs
     OPENWEATHER_API_KEY: Optional[str] = None

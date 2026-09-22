@@ -39,8 +39,20 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Skip dynamic API requests (which are handled via LocalStorage in components)
-  if (url.pathname.startsWith('/api') || url.pathname.includes('/farmer/')) {
+  // Skip cross-origin requests (e.g. Render backend API calls) and all API routes
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/users') ||
+    url.pathname.startsWith('/farms') ||
+    url.pathname.startsWith('/fields') ||
+    url.pathname.startsWith('/crops') ||
+    url.pathname.startsWith('/sensors') ||
+    url.pathname.startsWith('/recommendations') ||
+    url.pathname.startsWith('/notifications') ||
+    url.pathname.startsWith('/weather') ||
+    url.pathname.includes('/farmer/')
+  ) {
     return;
   }
 
