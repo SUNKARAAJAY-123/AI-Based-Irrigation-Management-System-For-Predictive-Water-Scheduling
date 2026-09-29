@@ -45,13 +45,23 @@ def resolve_database_url() -> str:
 DATABASE_URL = resolve_database_url()
 
 # Initialize Engine with Pooling settings
+connect_args = {}
+if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
+    connect_args.update({
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5
+    })
+
 engine = create_engine(
     DATABASE_URL,
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
-    pool_recycle=1800,
-    pool_pre_ping=True  # Enables automatic connection validation
+    pool_recycle=300,
+    pool_pre_ping=True,  # Enables automatic connection validation
+    connect_args=connect_args
 )
 
 

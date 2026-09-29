@@ -49,14 +49,24 @@ def resolve_database_url() -> str:
 DATABASE_URL = resolve_database_url()
 
 # Setup Engine
+connect_args = {"client_encoding": "utf8"}
+# Add TCP Keepalives for remote PostgreSQL connections (e.g. Supabase / Render)
+if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
+    connect_args.update({
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5
+    })
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
-    pool_recycle=1800,
-    connect_args={"client_encoding": "utf8"}
+    pool_recycle=300,  # Recycle connections every 5 minutes to prevent idle connection reset by peer
+    connect_args=connect_args
 )
 
 # Setup Session Factory
@@ -75,6 +85,9 @@ def get_db() -> Generator:
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

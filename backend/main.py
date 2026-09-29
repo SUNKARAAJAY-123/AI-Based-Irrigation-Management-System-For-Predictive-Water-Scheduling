@@ -1,8 +1,10 @@
 import asyncio
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from sqlalchemy.exc import OperationalError
 from backend.api.routes import router
 from ml import predict
 from backend.utils.config import settings
@@ -120,6 +122,17 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router)
+
+@app.exception_handler(OperationalError)
+async def db_operational_error_handler(request, exc: OperationalError):
+    logger.error(f"Database OperationalError on {request.url}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "Database connection error. The database may be restarting or unreachable. Please try again.",
+            "error_type": "DatabaseOperationalError"
+        }
+    )
 
 @app.get("/")
 def read_root():
