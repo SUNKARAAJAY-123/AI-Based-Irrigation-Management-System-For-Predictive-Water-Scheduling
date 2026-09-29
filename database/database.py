@@ -14,6 +14,13 @@ def resolve_database_url() -> str:
     url = os.getenv("DATABASE_URL")
     backend_env = os.getenv("BACKEND_ENV", "development").lower()
     
+    if url and ("YOUR_PROJECT_REF" in url or "[YOUR-PROJECT-REF]" in url or "YOUR_SUPABASE_PASSWORD" in url):
+        logger.error(
+            "CRITICAL CONFIGURATION ERROR: DATABASE_URL contains unreplaced placeholder ('YOUR_PROJECT_REF'). "
+            "Please configure DATABASE_URL in your hosting platform (e.g. Render Dashboard environment settings) "
+            "or .env file with your actual database reference ID and password."
+        )
+
     if not url:
         if backend_env == "production":
             logger.warning(

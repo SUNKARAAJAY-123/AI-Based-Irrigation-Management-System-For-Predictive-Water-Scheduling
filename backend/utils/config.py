@@ -82,6 +82,11 @@ class Settings(BaseSettings):
 
     def get_db_url(self) -> str:
         url = self.DATABASE_URL
+        if url and ("YOUR_PROJECT_REF" in url or "[YOUR-PROJECT-REF]" in url or "YOUR_SUPABASE_PASSWORD" in url):
+            print(
+                "[ERROR] Settings: DATABASE_URL contains unreplaced placeholder ('YOUR_PROJECT_REF'). "
+                "Please configure DATABASE_URL in Render Dashboard environment settings or .env file."
+            )
         if not url:
             url = f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         if url.startswith("postgres://"):
@@ -94,6 +99,11 @@ class Settings(BaseSettings):
 
     def get_async_db_url(self) -> str:
         url = self.ASYNC_DATABASE_URL
+        if url and ("YOUR_PROJECT_REF" in url or "[YOUR-PROJECT-REF]" in url or "YOUR_SUPABASE_PASSWORD" in url):
+            print(
+                "[ERROR] Settings: ASYNC_DATABASE_URL contains unreplaced placeholder ('YOUR_PROJECT_REF'). "
+                "Please configure ASYNC_DATABASE_URL in Render Dashboard environment settings or .env file."
+            )
         if not url:
             url = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         if url.startswith("postgres://"):
